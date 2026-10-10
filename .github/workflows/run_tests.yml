@@ -25,5 +25,6 @@ jobs:
           pip install -r requirements.txt
           pip install -e .
 
-      - name: Run tests
-        run: pytest
+      # Fails the run if the tests cover less than 90% of the code.
+      - name: Run tests with coverage
+        run: pytest --cov=tickets --cov=db --cov-report=term-missing --cov-fail-under=90
