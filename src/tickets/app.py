@@ -1,0 +1,159 @@
+import os
+from pathlib import Path
+
+from flask import Flask, jsonify, render_template, request
+
+from tickets.tickets import NotFoundError, TicketApp, ValidationError
+
+DEFAULT_DATA_FILE = Path(__file__).resolve().parents[2] / "data" / "sample_data.json"
+
+
+def _error(code: str, message: str, status: int):
+    return jsonify({"error": {"code": code, "message": message}}), status
+
+
+def _not_found():
+    return _error("TICKET_NOT_FOUND", "Ticket not found", 404)
+
+
+def _summary_json(row: dict) -> dict:
+    return {
+        "id": row["ticket_id"],
+        "title": row["title"],
+        "requesterName": row["requester_name"],
+        "category": row["category"],
+        "priority": row["priority"],
+        "status": row["status"],
+        "createdAt": row["created_at"],
+    }
+
+
+def _note_json(row: dict) -> dict:
+    return {
+        "id": row["note_id"],
+        "author": row["author"],
+        "body": row["body"],
+        "createdAt": row["created_at"],
+    }
+
+
+def _ticket_json(row: dict) -> dict:
+    return {
+        "id": row["ticket_id"],
+        "title": row["title"],
+        "description": row["description"],
+        "requesterName": row["requester_name"],
+        "requesterEmail": row["requester_email"],
+        "category": row["category"],
+        "priority": row["priority"],
+        "status": row["status"],
+        "createdAt": row["created_at"],
+        "updatedAt": row["updated_at"],
+        "notes": [_note_json(n) for n in row["notes"]],
+    }
+
+
+def _json_body():
+    """The request's JSON object, or None if the body is missing or not an object."""
+    body = request.get_json(silent=True)
+    return body if isinstance(body, dict) else None
+
+
+def create_app(ticket_app: TicketApp) -> Flask:
+    """Build the Flask app and add routes."""
+    app = Flask(__name__)
+
+    @app.get("/")
+    def index_page():
+        return render_template("index.html")
+
+    @app.get("/submit")
+    def submit_page():
+        return render_template("submit.html", active="submit")
+
+    @app.get("/queue")
+    def queue_page():
+        return render_template("queue.html", active="queue")
+
+    @app.get("/ticket")
+    def ticket_page():
+        return render_template("ticket.html", active="queue")
+
+    @app.get("/health")
+    def health():
+        ticket_app.health()
+        return jsonify({"status": "ok"}), 200
+
+    @app.get("/tickets")
+    def list_tickets():
+        # An empty value (?status=) is treated the same as leaving the filter off.
+        status = request.args.get("status") or None
+        priority = request.args.get("priority") or None
+        try:
+            rows = ticket_app.list_tickets(status=status, priority=priority)
+        except ValidationError as exc:
+            return _error("BAD_REQUEST", str(exc), 400)
+        return jsonify({"tickets": [_summary_json(r) for r in rows]}), 200
+
+    @app.post("/tickets")
+    def create_ticket():
+        body = _json_body()
+        if body is None:
+            return _error("BAD_REQUEST", "JSON body required", 400)
+        try:
+            ticket_id = ticket_app.create_ticket(body)
+        except ValidationError as exc:
+            return _error("BAD_REQUEST", str(exc), 400)
+        return jsonify({"id": ticket_id}), 201
+
+    @app.get("/tickets/<ticket_id>")
+    def get_ticket(ticket_id):
+        try:
+            row = ticket_app.get_ticket(ticket_id)
+        except NotFoundError:
+            return _not_found()
+        return jsonify(_ticket_json(row)), 200
+
+    @app.patch("/tickets/<ticket_id>")
+    def update_status(ticket_id):
+        body = _json_body()
+        if body is None:
+            return _error("BAD_REQUEST", "JSON body required", 400)
+        if "status" not in body:
+            return _error("BAD_REQUEST", "Status is required", 400)
+        try:
+            row = ticket_app.update_status(ticket_id, body["status"])
+        except ValidationError as exc:
+            return _error("BAD_REQUEST", str(exc), 400)
+        except NotFoundError:
+            return _not_found()
+        return jsonify(_ticket_json(row)), 200
+
+    @app.post("/tickets/<ticket_id>/notes")
+    def add_note(ticket_id):
+        body = _json_body()
+        if body is None:
+            return _error("BAD_REQUEST", "JSON body required", 400)
+        try:
+            note = ticket_app.add_note(ticket_id, body)
+        except ValidationError as exc:
+            return _error("BAD_REQUEST", str(exc), 400)
+        except NotFoundError:
+            return _not_found()
+        return jsonify(_note_json(note)), 201
+
+    return app
+
+
+def launch() -> Flask:
+    """Build TicketApp + Flask app from environment settings (for gunicorn too).
+
+    TICKETS_DATA_FILE: sample data JSON to seed tickets from
+    (defaults to data/sample_data.json in this repo).
+    """
+    data_file = os.environ.get("TICKETS_DATA_FILE", str(DEFAULT_DATA_FILE))
+    return create_app(TicketApp.from_file(data_file))
+
+
+if __name__ == "__main__":
+    launch().run(debug=True, port=int(os.environ.get("PORT", "5000")))

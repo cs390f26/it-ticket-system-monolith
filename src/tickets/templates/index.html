@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1 class="page-title">IT Help Desk</h1>
+<p class="lede">
+  Students and staff can send in issues. Campus IT uses the queue and ticket
+  pages to track work and update status.
+</p>
+
+<div class="home-grid">
+  <a class="card home-card" href="{{ url_for('submit_page') }}">
+    <h2>Submit Ticket</h2>
+    <p>Report hardware, software, network, account, or other problems.</p>
+    <span>Open form</span>
+  </a>
+  <a class="card home-card" href="{{ url_for('queue_page') }}">
+    <h2>Ticket Queue</h2>
+    <p>IT staff see every ticket, highest priority first.</p>
+    <span>View queue</span>
+  </a>
+  <a class="card home-card" href="{{ url_for('queue_page', status='Open') }}">
+    <h2>Open Tickets</h2>
+    <p>Jump straight to tickets nobody has picked up yet.</p>
+    <span>View open</span>
+  </a>
+</div>
+
+<div class="stats" id="stats" hidden>
+  <div class="card stat"><strong id="stat-open">0</strong><span>Open</span></div>
+  <div class="card stat"><strong id="stat-progress">0</strong><span>In progress</span></div>
+  <div class="card stat"><strong id="stat-urgent">0</strong><span>Urgent, not resolved</span></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (async function loadStats() {
+    const result = await api("/tickets");
+    if (!result.ok) return;
+    const tickets = result.data.tickets;
+    const count = (test) => tickets.filter(test).length;
+    document.getElementById("stat-open").textContent = count((t) => t.status === "Open");
+    document.getElementById("stat-progress").textContent = count((t) => t.status === "In progress");
+    document.getElementById("stat-urgent").textContent = count(
+      (t) => t.priority === "Urgent" && t.status !== "Resolved"
+    );
+    document.getElementById("stats").hidden = false;
+  })();
+</script>
+{% endblock %}

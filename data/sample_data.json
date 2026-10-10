@@ -1,0 +1,142 @@
+{
+  "tickets": [
+    {
+      "ticket_id": "HD-1043",
+      "title": "Laptop will not boot after update",
+      "description": "After last night's update the laptop shows the manufacturer logo and then a black screen. It does not reach the login window. Holding the power button turns it off. This is the machine I use for class.",
+      "requester_name": "Jordan Lee",
+      "requester_email": "jordan.lee@college.edu",
+      "category": "Hardware",
+      "priority": "Urgent",
+      "status": "In progress",
+      "created_at": "2026-09-10T15:40:00.000Z"
+    },
+    {
+      "ticket_id": "HD-1046",
+      "title": "Classroom projector has no input",
+      "description": "The projector in SC 204 stays on the splash screen. HDMI from the podium laptop does not switch the source. Class starts in an hour.",
+      "requester_name": "Riley Patel",
+      "requester_email": "riley.patel@college.edu",
+      "category": "Other",
+      "priority": "High",
+      "status": "Open",
+      "created_at": "2026-09-12T08:05:00.000Z"
+    },
+    {
+      "ticket_id": "HD-1042",
+      "title": "Cannot connect to campus Wi-Fi",
+      "description": "I can see Campus-Secure in the Wi-Fi list, but my laptop never finishes connecting. I tried forgetting the network and signing in again with my student account. This started this morning in the library. Wired ethernet in the lab still works.",
+      "requester_name": "Maya Chen",
+      "requester_email": "maya.chen@college.edu",
+      "category": "Network",
+      "priority": "High",
+      "status": "Open",
+      "created_at": "2026-09-11T09:14:00.000Z"
+    },
+    {
+      "ticket_id": "HD-1044",
+      "title": "Need Adobe license for ART 131",
+      "description": "ART 131 starts next week and the lab computers say the Adobe license has expired. Photoshop and Illustrator both fail to open. I need a license before the first studio day.",
+      "requester_name": "Li",
+      "requester_email": "li.wang@college.edu",
+      "category": "Software",
+      "priority": "Medium",
+      "status": "Open",
+      "created_at": "2026-09-10T11:20:00.000Z"
+    },
+    {
+      "ticket_id": "HD-1047",
+      "title": "Library printer jammed",
+      "description": "The printer by the library entrance shows a paper jam and will not print. The display says to clear the rear tray. I do not see paper there. Other students are lined up.",
+      "requester_name": "Alex Kim",
+      "requester_email": "alex.kim@college.edu",
+      "category": "Hardware",
+      "priority": "Medium",
+      "status": "In progress",
+      "created_at": "2026-09-08T10:00:00.000Z"
+    },
+    {
+      "ticket_id": "HD-1045",
+      "title": "Password reset for lab account",
+      "description": "I can sign in to email, but the CS lab account rejects my password. I have not changed it. I need access before tonight's lab.",
+      "requester_name": "Priya Shah",
+      "requester_email": "priya.shah@college.edu",
+      "category": "Account",
+      "priority": "Low",
+      "status": "Resolved",
+      "created_at": "2026-09-09T13:05:00.000Z"
+    }
+  ],
+  "notes": [
+    {
+      "note_id": 1,
+      "ticket_id": "HD-1043",
+      "author": "System",
+      "body": "Ticket opened by requester.",
+      "created_at": "2026-09-10T15:40:00.000Z"
+    },
+    {
+      "note_id": 2,
+      "ticket_id": "HD-1043",
+      "author": "IT staff",
+      "body": "Picked up the laptop. Trying a boot repair before replacing the drive.",
+      "created_at": "2026-09-10T18:05:00.000Z"
+    },
+    {
+      "note_id": 3,
+      "ticket_id": "HD-1046",
+      "author": "System",
+      "body": "Ticket opened by requester.",
+      "created_at": "2026-09-12T08:05:00.000Z"
+    },
+    {
+      "note_id": 4,
+      "ticket_id": "HD-1042",
+      "author": "System",
+      "body": "Ticket opened by requester.",
+      "created_at": "2026-09-11T09:14:00.000Z"
+    },
+    {
+      "note_id": 5,
+      "ticket_id": "HD-1044",
+      "author": "System",
+      "body": "Ticket opened by requester.",
+      "created_at": "2026-09-10T11:20:00.000Z"
+    },
+    {
+      "note_id": 6,
+      "ticket_id": "HD-1047",
+      "author": "System",
+      "body": "Ticket opened by requester.",
+      "created_at": "2026-09-08T10:00:00.000Z"
+    },
+    {
+      "note_id": 7,
+      "ticket_id": "HD-1047",
+      "author": "IT staff",
+      "body": "Cleared a torn sheet from the rear tray.",
+      "created_at": "2026-09-08T14:15:00.000Z"
+    },
+    {
+      "note_id": 8,
+      "ticket_id": "HD-1047",
+      "author": "IT staff",
+      "body": "Printer jammed again. Watching it through the afternoon.",
+      "created_at": "2026-09-08T16:40:00.000Z"
+    },
+    {
+      "note_id": 9,
+      "ticket_id": "HD-1045",
+      "author": "System",
+      "body": "Ticket opened by requester.",
+      "created_at": "2026-09-09T13:05:00.000Z"
+    },
+    {
+      "note_id": 10,
+      "ticket_id": "HD-1045",
+      "author": "IT staff",
+      "body": "Reset the lab password and confirmed the account can sign in.",
+      "created_at": "2026-09-09T16:30:00.000Z"
+    }
+  ]
+}

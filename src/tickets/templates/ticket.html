@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+
+{% block title %}Ticket — Campus IT Help Desk{% endblock %}
+
+{% block content %}
+<p><a href="{{ url_for('queue_page') }}">Back to queue</a></p>
+
+<div id="message" role="alert" hidden></div>
+
+<p class="empty-state" id="loading">Loading ticket...</p>
+
+<article id="ticket" hidden>
+  <h1 class="page-title" id="ticket-title"></h1>
+  <p class="lede">
+    Save changes can update status only, an internal note only, or both at
+    once. Priority is set when the ticket is submitted and cannot be changed.
+  </p>
+
+  <ul class="meta-list">
+    <li><span>Requester</span><span id="ticket-requester"></span></li>
+    <li><span>Category</span><span id="ticket-category"></span></li>
+    <li><span>Priority</span><span id="ticket-priority"></span></li>
+    <li>
+      <label>
+        Status
+        <select name="status" form="ticket-update" id="status-select">
+          <option>Open</option>
+          <option>In progress</option>
+          <option>Resolved</option>
+        </select>
+      </label>
+    </li>
+    <li><span>Created</span><span id="ticket-created"></span></li>
+    <li><span>Last updated</span><span id="ticket-updated"></span></li>
+  </ul>
+
+  <h2>Description</h2>
+  <p class="description" id="ticket-description"></p>
+
+  <div class="card">
+    <h2>Update ticket</h2>
+    <form id="ticket-update">
+      <div class="form-grid">
+        <label class="full">
+          Internal note
+          <textarea name="note" id="note-input" maxlength="1000"
+                    placeholder="What did you try? What should the next technician know?"></textarea>
+        </label>
+      </div>
+      <div class="actions">
+        <button class="btn btn-primary" type="submit" id="save-button">Save changes</button>
+        <button class="btn btn-secondary" type="reset">Cancel changes</button>
+      </div>
+    </form>
+  </div>
+
+  <h2>Notes</h2>
+  <div class="notes" id="notes"></div>
+</article>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const ticketId = new URLSearchParams(location.search).get("id");
+  const message = document.getElementById("message");
+  const loading = document.getElementById("loading");
+  const article = document.getElementById("ticket");
+  const form = document.getElementById("ticket-update");
+  const statusSelect = document.getElementById("status-select");
+  const noteInput = document.getElementById("note-input");
+  const saveButton = document.getElementById("save-button");
+  let current = null;
+
+  function text(id, value) {
+    document.getElementById(id).textContent = value;
+  }
+
+  function noteElement(note) {
+    const div = document.createElement("div");
+    div.className = note.author === "System" ? "note note-system" : "note";
+    const time = document.createElement("time");
+    time.dateTime = note.createdAt;
+    time.textContent = formatDate(note.createdAt) + " · " + note.author;
+    div.append(time, document.createTextNode(note.body));
+    return div;
+  }
+
+  function render(ticket) {
+    current = ticket;
+    document.title = ticket.id + " — Campus IT Help Desk";
+    text("ticket-title", ticket.id + ": " + ticket.title);
+    text("ticket-requester", ticket.requesterName + " · " + ticket.requesterEmail);
+    text("ticket-category", ticket.category);
+    document.getElementById("ticket-priority").replaceChildren(priorityBadge(ticket.priority));
+    text("ticket-created", formatDate(ticket.createdAt));
+    text("ticket-updated", formatDate(ticket.updatedAt));
+    text("ticket-description", ticket.description);
+    statusSelect.value = ticket.status;
+    for (const option of statusSelect.options) {
+      option.defaultSelected = option.value === ticket.status;
+    }
+    document.getElementById("notes").replaceChildren(...ticket.notes.map(noteElement));
+    loading.hidden = true;
+    article.hidden = false;
+  }
+
+  async function loadTicket() {
+    if (!ticketId) {
+      loading.hidden = true;
+      showBanner(message, "No ticket id given. Open a ticket from the queue.", "error");
+      return false;
+    }
+    const result = await api("/tickets/" + encodeURIComponent(ticketId));
+    if (!result.ok) {
+      loading.hidden = true;
+      article.hidden = true;
+      showBanner(message, errorMessage(result, "Could not load the ticket."), "error");
+      return false;
+    }
+    render(result.data);
+    return true;
+  }
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    hideBanner(message);
+
+    const newStatus = statusSelect.value;
+    const note = noteInput.value.trim();
+    const statusChanged = newStatus !== current.status;
+    if (!statusChanged && !note) {
+      showBanner(message, "Nothing to save. Change the status or write a note.", "error");
+      return;
+    }
+
+    setBusy(saveButton, true, "Saving...");
+    const url = "/tickets/" + encodeURIComponent(current.id);
+    if (statusChanged) {
+      const result = await api(url, { method: "PATCH", body: { status: newStatus } });
+      if (!result.ok) {
+        setBusy(saveButton, false);
+        showBanner(message, errorMessage(result, "Could not save the status."), "error");
+        return;
+      }
+    }
+    if (note) {
+      const result = await api(url + "/notes", { method: "POST", body: { body: note } });
+      if (!result.ok) {
+        setBusy(saveButton, false);
+        await loadTicket();
+        const prefix = statusChanged ? "Status saved, but the note was not: " : "";
+        showBanner(message, prefix + errorMessage(result, "Could not save the note."), "error");
+        return;
+      }
+    }
+
+    noteInput.value = "";
+    await loadTicket();
+    setBusy(saveButton, false);
+    showBanner(message, "Changes saved.", "success");
+  });
+
+  loadTicket().then((loaded) => {
+    if (loaded && new URLSearchParams(location.search).has("created")) {
+      showBanner(message, "Ticket submitted. IT will review it soon.", "success");
+    }
+  });
+</script>
+{% endblock %}

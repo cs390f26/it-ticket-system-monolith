@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block title %}Submit Ticket — Campus IT Help Desk{% endblock %}
+
+{% block content %}
+<h1 class="page-title">Submit a ticket</h1>
+<p class="lede">
+  Describe the problem so IT can route it. Priority is chosen here and cannot
+  be changed after the ticket is submitted.
+</p>
+
+<div id="message" role="alert" hidden></div>
+
+<div class="card">
+  <form id="submit-form" novalidate>
+    <div class="form-grid">
+      <label>
+        Name
+        <input type="text" name="requesterName" maxlength="80" placeholder="Jordan Lee" required />
+      </label>
+      <label>
+        Email
+        <input type="email" name="requesterEmail" maxlength="120" placeholder="jordan.lee@college.edu" required />
+      </label>
+      <label>
+        Category
+        <select name="category" required>
+          <option value="">Select a category</option>
+          <option>Hardware</option>
+          <option>Software</option>
+          <option>Network</option>
+          <option>Account</option>
+          <option>Other</option>
+        </select>
+      </label>
+      <label>
+        Priority
+        <select name="priority">
+          <option>Low</option>
+          <option selected>Medium</option>
+          <option>High</option>
+          <option>Urgent</option>
+        </select>
+      </label>
+      <label class="full">
+        Title
+        <input type="text" name="title" maxlength="120" placeholder="Short summary of the issue" required />
+      </label>
+      <label class="full">
+        Description
+        <textarea name="description" maxlength="2000" placeholder="What were you trying to do, and what happened?" required></textarea>
+      </label>
+    </div>
+    <div class="actions">
+      <button class="btn btn-primary" type="submit" id="submit-button">Submit ticket</button>
+      <a class="btn btn-secondary" href="{{ url_for('queue_page') }}">Cancel ticket</a>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const form = document.getElementById("submit-form");
+  const message = document.getElementById("message");
+  const button = document.getElementById("submit-button");
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    hideBanner(message);
+
+    const fields = new FormData(form);
+    const body = {};
+    for (const [name, value] of fields) {
+      body[name] = value;
+    }
+
+    setBusy(button, true, "Submitting...");
+    const result = await api("/tickets", { method: "POST", body });
+    if (!result.ok) {
+      setBusy(button, false);
+      showBanner(message, errorMessage(result, "Could not submit the ticket."), "error");
+      return;
+    }
+    window.location.href = "/ticket?id=" + encodeURIComponent(result.data.id) + "&created=1";
+  });
+</script>
+{% endblock %}
