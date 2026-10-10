@@ -3,9 +3,10 @@ from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request
 
-from tickets.tickets import NotFoundError, TicketApp, ValidationError
+from tickets.tickets import NotFoundError, TicketApp, UnavailableError, ValidationError
 
 DEFAULT_DATA_FILE = Path(__file__).resolve().parents[2] / "data" / "sample_data.json"
+DEFAULT_DB_FILE = Path(__file__).resolve().parents[2] / "data" / "tickets.db"
 
 
 def _error(code: str, message: str, status: int):
@@ -14,6 +15,10 @@ def _error(code: str, message: str, status: int):
 
 def _not_found():
     return _error("TICKET_NOT_FOUND", "Ticket not found", 404)
+
+
+def _unavailable():
+    return _error("SERVICE_UNAVAILABLE", "Service unavailable", 503)
 
 
 def _summary_json(row: dict) -> dict:
@@ -85,7 +90,10 @@ def create_app(ticket_app: TicketApp, show_ads: bool = True) -> Flask:
 
     @app.get("/health")
     def health():
-        ticket_app.health()
+        try:
+            ticket_app.health()
+        except UnavailableError:
+            return jsonify({"status": "unavailable"}), 503
         return jsonify({"status": "ok"}), 200
 
     @app.get("/tickets")
@@ -97,6 +105,8 @@ def create_app(ticket_app: TicketApp, show_ads: bool = True) -> Flask:
             rows = ticket_app.list_tickets(status=status, priority=priority)
         except ValidationError as exc:
             return _error("BAD_REQUEST", str(exc), 400)
+        except UnavailableError:
+            return _unavailable()
         return jsonify({"tickets": [_summary_json(r) for r in rows]}), 200
 
     @app.post("/tickets")
@@ -108,6 +118,8 @@ def create_app(ticket_app: TicketApp, show_ads: bool = True) -> Flask:
             ticket_id = ticket_app.create_ticket(body)
         except ValidationError as exc:
             return _error("BAD_REQUEST", str(exc), 400)
+        except UnavailableError:
+            return _unavailable()
         return jsonify({"id": ticket_id}), 201
 
     @app.get("/tickets/<ticket_id>")
@@ -116,6 +128,8 @@ def create_app(ticket_app: TicketApp, show_ads: bool = True) -> Flask:
             row = ticket_app.get_ticket(ticket_id)
         except NotFoundError:
             return _not_found()
+        except UnavailableError:
+            return _unavailable()
         return jsonify(_ticket_json(row)), 200
 
     @app.patch("/tickets/<ticket_id>")
@@ -131,6 +145,8 @@ def create_app(ticket_app: TicketApp, show_ads: bool = True) -> Flask:
             return _error("BAD_REQUEST", str(exc), 400)
         except NotFoundError:
             return _not_found()
+        except UnavailableError:
+            return _unavailable()
         return jsonify(_ticket_json(row)), 200
 
     @app.post("/tickets/<ticket_id>/notes")
@@ -144,6 +160,8 @@ def create_app(ticket_app: TicketApp, show_ads: bool = True) -> Flask:
             return _error("BAD_REQUEST", str(exc), 400)
         except NotFoundError:
             return _not_found()
+        except UnavailableError:
+            return _unavailable()
         return jsonify(_note_json(note)), 201
 
     return app
@@ -152,13 +170,15 @@ def create_app(ticket_app: TicketApp, show_ads: bool = True) -> Flask:
 def launch() -> Flask:
     """Build TicketApp + Flask app from environment settings (for gunicorn too).
 
-    TICKETS_DATA_FILE: sample data JSON to seed tickets from
+    TICKETS_DB_PATH: SQLite file on this machine (defaults to data/tickets.db).
+    TICKETS_DATA_FILE: sample data JSON used only when that database is empty
     (defaults to data/sample_data.json in this repo).
     TICKETS_SHOW_ADS: set to 0 to hide the just-for-fun ad strip.
     """
+    db_path = os.environ.get("TICKETS_DB_PATH", str(DEFAULT_DB_FILE))
     data_file = os.environ.get("TICKETS_DATA_FILE", str(DEFAULT_DATA_FILE))
     show_ads = os.environ.get("TICKETS_SHOW_ADS", "1") != "0"
-    return create_app(TicketApp.from_file(data_file), show_ads=show_ads)
+    return create_app(TicketApp.from_file(data_file, db_path), show_ads=show_ads)
 
 
 if __name__ == "__main__":

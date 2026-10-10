@@ -1,9 +1,12 @@
 import json
 import re
 import threading
-from copy import deepcopy
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+
+import db
+from db import UnavailableError
 
 CATEGORIES = ("Hardware", "Software", "Network", "Account", "Other")
 PRIORITIES = ("Low", "Medium", "High", "Urgent")
@@ -11,9 +14,6 @@ STATUSES = ("Open", "In progress", "Resolved")
 
 DEFAULT_PRIORITY = "Medium"
 OPENING_NOTE = "Ticket opened by requester."
-
-# Queue order: Urgent first, Low last.
-PRIORITY_RANK = {"Urgent": 1, "High": 2, "Medium": 3, "Low": 4}
 
 # "name@domain": one @, no spaces, something on each side.
 EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+$")
@@ -59,6 +59,17 @@ def _check_choice(value, choices: tuple, message: str) -> str:
     return value
 
 
+def _next_ticket_id(ticket_ids: list[str]) -> str:
+    numbers = [
+        int(ticket_id[len(TICKET_ID_PREFIX):])
+        for ticket_id in ticket_ids
+        if ticket_id.startswith(TICKET_ID_PREFIX)
+        and ticket_id[len(TICKET_ID_PREFIX):].isdigit()
+    ]
+    next_number = max(numbers) + 1 if numbers else FIRST_TICKET_NUMBER
+    return f"{TICKET_ID_PREFIX}{next_number}"
+
+
 CATEGORY_MESSAGE = "Category must be Hardware, Software, Network, Account, or Other"
 PRIORITY_MESSAGE = "Priority must be Low, Medium, High, or Urgent"
 STATUS_MESSAGE = "Status must be Open, In progress, or Resolved"
@@ -67,28 +78,52 @@ STATUS_MESSAGE = "Status must be Open, In progress, or Resolved"
 class TicketApp:
     """Ticket rules for the help desk.
 
-    Tickets and notes are kept in plain in-memory lists for now and reset on
-    every restart. Rows use the column names from the specs (ticket_id,
-    created_at, updated_at, ...). updated_at starts equal to created_at and
-    changes only when the status is saved.
+    Rows live in the SQLite file at db_path. Validation stays here; queries
+    stay in db.py. updated_at starts equal to created_at and changes only
+    when the status is saved.
     """
 
-    def __init__(self, tickets: list[dict] | None = None, notes: list[dict] | None = None):
-        self._tickets = deepcopy(tickets or [])
-        self._notes = deepcopy(notes or [])
-        for ticket in self._tickets:
-            ticket.setdefault("updated_at", ticket["created_at"])
+    def __init__(self, db_path: str | Path):
+        self._db_path = Path(db_path)
         self._lock = threading.Lock()
 
     @classmethod
-    def from_file(cls, path: str | Path) -> "TicketApp":
-        """Build a TicketApp seeded from a sample data JSON file."""
-        with open(path, encoding="utf-8") as f:
+    def from_file(cls, data_path: str | Path, db_path: str | Path) -> "TicketApp":
+        """Create the schema and seed an empty database from a JSON file."""
+        with open(data_path, encoding="utf-8") as f:
             data = json.load(f)
-        return cls(data.get("tickets", []), data.get("notes", []))
+        return cls.from_data(db_path, data)
+
+    @classmethod
+    def from_data(cls, db_path: str | Path, data: dict) -> "TicketApp":
+        """Create the schema and seed an empty database from ticket and note rows."""
+        path = Path(db_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        conn = db.connect(path)
+        try:
+            db.init_db(conn)
+            db.seed_if_empty(conn, data)
+        finally:
+            conn.close()
+        return cls(path)
+
+    @classmethod
+    def empty(cls, db_path: str | Path) -> "TicketApp":
+        """Create the schema with no tickets."""
+        return cls.from_data(db_path, {"tickets": [], "notes": []})
+
+    @contextmanager
+    def _connection(self):
+        conn = db.connect(self._db_path)
+        try:
+            yield conn
+        finally:
+            conn.close()
 
     def health(self) -> None:
-        """Nothing can be unavailable while data lives in memory."""
+        """Raise UnavailableError when the database cannot be queried."""
+        with self._connection() as conn:
+            db.ping(conn)
 
     def list_tickets(self, status: str | None = None, priority: str | None = None) -> list[dict]:
         """Ticket rows, highest priority first, then newest. Filters are optional."""
@@ -97,17 +132,8 @@ class TicketApp:
         if priority is not None:
             _check_choice(priority, PRIORITIES, PRIORITY_MESSAGE)
 
-        with self._lock:
-            rows = [
-                deepcopy(t)
-                for t in self._tickets
-                if (status is None or t["status"] == status)
-                and (priority is None or t["priority"] == priority)
-            ]
-
-        rows.sort(key=lambda t: t["created_at"], reverse=True)
-        rows.sort(key=lambda t: PRIORITY_RANK[t["priority"]])
-        return rows
+        with self._lock, self._connection() as conn:
+            return db.list_tickets(conn, status, priority)
 
     def create_ticket(self, data: dict) -> str:
         """Validate a submit, store it as Open with the opening note, return its id."""
@@ -123,10 +149,11 @@ class TicketApp:
         title = _clean_text(data, "title", "Title", 1, 120)
         description = _clean_text(data, "description", "Description", 1, 2000)
 
-        with self._lock:
-            ticket_id = self._next_ticket_id()
+        with self._lock, self._connection() as conn:
+            ticket_id = _next_ticket_id(db.list_ticket_ids(conn))
             created_at = _now()
-            self._tickets.append(
+            db.insert_ticket_with_note(
+                conn,
                 {
                     "ticket_id": ticket_id,
                     "title": title,
@@ -138,63 +165,37 @@ class TicketApp:
                     "status": "Open",
                     "created_at": created_at,
                     "updated_at": created_at,
-                }
+                },
+                {
+                    "ticket_id": ticket_id,
+                    "author": "System",
+                    "body": OPENING_NOTE,
+                    "created_at": created_at,
+                },
             )
-            self._notes.append(self._new_note(ticket_id, "System", OPENING_NOTE, created_at))
         return ticket_id
 
     def get_ticket(self, ticket_id: str) -> dict:
         """One ticket row plus updated_at and its notes (oldest first)."""
-        with self._lock:
-            return self._ticket_with_notes(ticket_id)
+        with self._lock, self._connection() as conn:
+            ticket = db.get_ticket(conn, ticket_id)
+        if ticket is None:
+            raise NotFoundError(f"ticket {ticket_id!r} not found")
+        return ticket
 
     def update_status(self, ticket_id: str, status) -> dict:
         """Save a new status and return the full ticket."""
         _check_choice(status, STATUSES, STATUS_MESSAGE)
-        with self._lock:
-            ticket = self._find(ticket_id)
-            ticket["status"] = status
-            ticket["updated_at"] = _now()
-            return self._ticket_with_notes(ticket_id)
+        with self._lock, self._connection() as conn:
+            saved = db.save_status(conn, ticket_id, status, _now())
+            if not saved:
+                raise NotFoundError(f"ticket {ticket_id!r} not found")
+            return db.get_ticket(conn, ticket_id)
 
     def add_note(self, ticket_id: str, data: dict) -> dict:
         """Append an IT staff note and return it."""
         body = _clean_text(data, "body", "Note", 1, 1000)
-        with self._lock:
-            self._find(ticket_id)
-            note = self._new_note(ticket_id, "IT staff", body, _now())
-            self._notes.append(note)
-            return deepcopy(note)
-
-    def _find(self, ticket_id: str) -> dict:
-        for ticket in self._tickets:
-            if ticket["ticket_id"] == ticket_id:
-                return ticket
-        raise NotFoundError(f"ticket {ticket_id!r} not found")
-
-    def _ticket_with_notes(self, ticket_id: str) -> dict:
-        ticket = deepcopy(self._find(ticket_id))
-        notes = [deepcopy(n) for n in self._notes if n["ticket_id"] == ticket_id]
-        notes.sort(key=lambda n: (n["created_at"], n["note_id"]))
-        ticket["notes"] = notes
-        return ticket
-
-    def _next_ticket_id(self) -> str:
-        numbers = [
-            int(t["ticket_id"][len(TICKET_ID_PREFIX):])
-            for t in self._tickets
-            if t["ticket_id"].startswith(TICKET_ID_PREFIX)
-            and t["ticket_id"][len(TICKET_ID_PREFIX):].isdigit()
-        ]
-        next_number = max(numbers) + 1 if numbers else FIRST_TICKET_NUMBER
-        return f"{TICKET_ID_PREFIX}{next_number}"
-
-    def _new_note(self, ticket_id: str, author: str, body: str, created_at: str) -> dict:
-        next_id = max((n["note_id"] for n in self._notes), default=0) + 1
-        return {
-            "note_id": next_id,
-            "ticket_id": ticket_id,
-            "author": author,
-            "body": body,
-            "created_at": created_at,
-        }
+        with self._lock, self._connection() as conn:
+            if db.get_ticket(conn, ticket_id) is None:
+                raise NotFoundError(f"ticket {ticket_id!r} not found")
+            return db.insert_note(conn, ticket_id, "IT staff", body, _now())

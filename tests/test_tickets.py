@@ -124,20 +124,45 @@ def test_returned_rows_are_copies(ticket_app):
     assert ticket_app.get_ticket("HD-1042")["status"] == "Open"
 
 
-def test_seed_keeps_stored_updated_at():
+def _stored_ticket(**overrides):
+    row = {
+        "ticket_id": "HD-1",
+        "title": "Seed ticket",
+        "description": "Used to check seeding.",
+        "requester_name": "Ada",
+        "requester_email": "ada@college.edu",
+        "category": "Other",
+        "priority": "Low",
+        "status": "Open",
+        "created_at": "2026-09-01T10:00:00.000Z",
+        "updated_at": "2026-09-01T10:00:00.000Z",
+    }
+    row.update(overrides)
+    return row
+
+
+def test_seed_keeps_stored_updated_at(tmp_path):
     tickets = [
-        {
-            "ticket_id": "HD-1",
-            "priority": "Low",
-            "status": "Resolved",
-            "created_at": "2026-09-01T10:00:00.000Z",
-            "updated_at": "2026-09-02T15:30:00.000Z",
-        }
+        _stored_ticket(
+            status="Resolved",
+            updated_at="2026-09-02T15:30:00.000Z",
+        )
     ]
-    assert TicketApp(tickets).get_ticket("HD-1")["updated_at"] == "2026-09-02T15:30:00.000Z"
+    app = TicketApp.from_data(tmp_path / "tickets.db", {"tickets": tickets, "notes": []})
+    assert app.get_ticket("HD-1")["updated_at"] == "2026-09-02T15:30:00.000Z"
 
 
-def test_seed_data_is_not_shared():
-    tickets = [{"ticket_id": "HD-1", "priority": "Low", "status": "Open", "created_at": "x"}]
-    TicketApp(tickets).update_status("HD-1", "Resolved")
+def test_seed_data_is_not_shared(tmp_path):
+    tickets = [_stored_ticket(created_at="x", updated_at="x")]
+    TicketApp.from_data(tmp_path / "tickets.db", {"tickets": tickets, "notes": []}).update_status(
+        "HD-1", "Resolved"
+    )
     assert tickets[0]["status"] == "Open"
+
+
+def test_seed_does_not_replace_existing_rows(tmp_path):
+    path = tmp_path / "tickets.db"
+    data = {"tickets": [_stored_ticket()], "notes": []}
+    TicketApp.from_data(path, data).update_status("HD-1", "Resolved")
+    again = TicketApp.from_data(path, data)
+    assert again.get_ticket("HD-1")["status"] == "Resolved"

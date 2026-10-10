@@ -1,5 +1,7 @@
 import pytest
 
+from db import UnavailableError
+
 
 def test_health_ok(client):
     response = client.get("/health")
@@ -166,3 +168,41 @@ def test_add_note_blank(client):
 def test_add_note_not_found(client):
     response = client.post("/tickets/HD-0000/notes", json={"body": "hello"})
     assert response.status_code == 404
+
+
+def test_health_when_database_down(client, monkeypatch):
+    def fail(path):
+        raise UnavailableError("Service unavailable")
+
+    monkeypatch.setattr("db.connect", fail)
+    response = client.get("/health")
+    assert response.status_code == 503
+    assert response.get_json() == {"status": "unavailable"}
+
+
+@pytest.mark.parametrize(
+    "method, path, kwargs",
+    [
+        ("get", "/tickets", {}),
+        ("post", "/tickets", {"json": {
+            "requesterName": "Sam",
+            "requesterEmail": "sam@college.edu",
+            "category": "Other",
+            "title": "Test",
+            "description": "Testing",
+        }}),
+        ("get", "/tickets/HD-1042", {}),
+        ("patch", "/tickets/HD-1042", {"json": {"status": "Open"}}),
+        ("post", "/tickets/HD-1042/notes", {"json": {"body": "hello"}}),
+    ],
+)
+def test_routes_when_database_down(client, monkeypatch, method, path, kwargs):
+    def fail(db_path):
+        raise UnavailableError("Service unavailable")
+
+    monkeypatch.setattr("db.connect", fail)
+    response = getattr(client, method)(path, **kwargs)
+    assert response.status_code == 503
+    assert response.get_json() == {
+        "error": {"code": "SERVICE_UNAVAILABLE", "message": "Service unavailable"}
+    }
