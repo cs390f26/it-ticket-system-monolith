@@ -1,0 +1,75 @@
+{# Just-for-fun ad slot. Remove by setting TICKETS_SHOW_ADS=0. #}
+<link rel="stylesheet" href="{{ url_for('static', filename='ads.css') }}" />
+<section class="ad-slot" id="ad-slot" aria-label="Advertisement">
+  <div class="ad-frame">
+    {% for n in range(1, 5) %}
+      <img class="ad-image{% if loop.first %} is-active{% endif %}"
+           src="{{ url_for('static', filename='ads/support-plus-' ~ n ~ '.jpg') }}"
+           alt="Upgrade to Support+ ad {{ n }}" />
+    {% endfor %}
+    <span class="ad-label">Ad</span>
+    <button class="ad-close" type="button" id="ad-close" aria-label="Close ad">&times;</button>
+  </div>
+  <div class="ad-dots">
+    {% for n in range(1, 5) %}
+      <button type="button" class="ad-dot{% if loop.first %} is-active{% endif %}"
+              aria-label="Show ad {{ n }}"></button>
+    {% endfor %}
+  </div>
+</section>
+<script>
+  (function () {
+    const slot = document.getElementById("ad-slot");
+    const images = slot.querySelectorAll(".ad-image");
+    const dots = slot.querySelectorAll(".ad-dot");
+    const ROTATE_MS = 10000;
+    const HIDE_MS = 60000;
+    let current = 0;
+    let timer = null;
+
+    function show(index) {
+      images[current].classList.remove("is-active");
+      dots[current].classList.remove("is-active");
+      current = index;
+      images[current].classList.add("is-active");
+      dots[current].classList.add("is-active");
+    }
+
+    function restart() {
+      clearInterval(timer);
+      timer = setInterval(() => show((current + 1) % images.length), ROTATE_MS);
+    }
+
+    dots.forEach((dot, index) =>
+      dot.addEventListener("click", () => {
+        show(index);
+        restart();
+      })
+    );
+
+    function reveal() {
+      localStorage.removeItem("adsHiddenUntil");
+      slot.hidden = false;
+      restart();
+    }
+
+    function hideFor(ms) {
+      clearInterval(timer);
+      slot.hidden = true;
+      setTimeout(reveal, ms);
+    }
+
+    document.getElementById("ad-close").addEventListener("click", () => {
+      localStorage.setItem("adsHiddenUntil", String(Date.now() + HIDE_MS));
+      hideFor(HIDE_MS);
+    });
+
+    // The one-minute break carries over when moving between pages.
+    const remaining = Number(localStorage.getItem("adsHiddenUntil") || 0) - Date.now();
+    if (remaining > 0) {
+      hideFor(remaining);
+    } else {
+      reveal();
+    }
+  })();
+</script>

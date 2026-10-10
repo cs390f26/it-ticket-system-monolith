@@ -59,9 +59,13 @@ def _json_body():
     return body if isinstance(body, dict) else None
 
 
-def create_app(ticket_app: TicketApp) -> Flask:
+def create_app(ticket_app: TicketApp, show_ads: bool = True) -> Flask:
     """Build the Flask app and add routes."""
     app = Flask(__name__)
+
+    @app.context_processor
+    def page_settings():
+        return {"show_ads": show_ads}
 
     @app.get("/")
     def index_page():
@@ -150,9 +154,11 @@ def launch() -> Flask:
 
     TICKETS_DATA_FILE: sample data JSON to seed tickets from
     (defaults to data/sample_data.json in this repo).
+    TICKETS_SHOW_ADS: set to 0 to hide the just-for-fun ad strip.
     """
     data_file = os.environ.get("TICKETS_DATA_FILE", str(DEFAULT_DATA_FILE))
-    return create_app(TicketApp.from_file(data_file))
+    show_ads = os.environ.get("TICKETS_SHOW_ADS", "1") != "0"
+    return create_app(TicketApp.from_file(data_file), show_ads=show_ads)
 
 
 if __name__ == "__main__":

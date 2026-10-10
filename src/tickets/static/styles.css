@@ -20,10 +20,19 @@
   --open: #1d4ed8;
   --progress: #7c3aed;
   --resolved: #15803d;
-  --radius: 10px;
-  --shadow: 0 1px 3px rgba(16, 24, 40, 0.08);
+  --radius: 12px;
+  --shadow: 0 1px 2px rgba(16, 24, 40, 0.05), 0 4px 12px rgba(16, 24, 40, 0.05);
   --max: 1100px;
   --ease: 160ms ease;
+  --font-body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Plus Jakarta Sans", "Inter", system-ui, -apple-system, sans-serif;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  letter-spacing: -0.01em;
 }
 
 [hidden] {
@@ -37,7 +46,8 @@ html {
 body {
   margin: 0;
   min-height: 100vh;
-  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
   color: var(--ink);
   background: var(--bg);
   line-height: 1.5;
@@ -52,8 +62,9 @@ img {
 }
 
 .site-header {
-  background: var(--brand);
+  background: linear-gradient(135deg, var(--brand) 0%, var(--brand-dark) 100%);
   color: #fff;
+  box-shadow: 0 2px 10px rgba(10, 53, 92, 0.25);
 }
 
 .header-inner,
@@ -88,8 +99,10 @@ img {
 }
 
 .brand-name {
-  font-size: 1.2rem;
-  font-weight: 700;
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
 }
 
 .nav {
@@ -98,22 +111,30 @@ img {
   gap: 0.4rem;
 }
 
+.nav {
+  gap: 0.6rem;
+}
+
 .nav a {
-  color: #fff;
+  color: var(--brand);
+  background: #fff;
+  font-weight: 600;
   text-decoration: none;
-  padding: 0.55rem 0.8rem;
+  padding: 0.55rem 1rem;
   border-radius: 8px;
   border: 1px solid transparent;
   min-height: 44px;
   display: inline-flex;
   align-items: center;
-  transition: background-color var(--ease), border-color var(--ease);
+  transition: background-color var(--ease), box-shadow var(--ease);
 }
 
-.nav a:hover,
+.nav a:hover {
+  background: #e8f1fb;
+}
+
 .nav a[aria-current="page"] {
-  background: var(--brand-dark);
-  border-color: rgba(255, 255, 255, 0.25);
+  box-shadow: inset 0 -3px 0 var(--accent);
 }
 
 .main {
@@ -133,8 +154,10 @@ img {
 }
 
 .page-title {
-  margin: 0 0 0.35rem;
-  font-size: clamp(1.5rem, 3vw, 2rem);
+  margin: 0 0 0.4rem;
+  font-size: clamp(1.6rem, 3vw, 2.2rem);
+  font-weight: 800;
+  line-height: 1.2;
 }
 
 .lede {
@@ -390,6 +413,11 @@ a:focus-visible,
   transition: background-color var(--ease);
 }
 
+.ticket-table td[data-label="ID"] a {
+  white-space: nowrap;
+  font-weight: 600;
+}
+
 .ticket-table tbody tr:hover {
   background: #f8fafc;
 }
@@ -475,7 +503,41 @@ a:focus-visible,
 
 .description {
   white-space: pre-wrap;
-  margin: 0 0 1.5rem;
+  margin: 0 0 1rem;
+}
+
+.page-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0 0 0.6rem;
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--brand);
+}
+
+.page-eyebrow::before {
+  content: "";
+  width: 1.5rem;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+.status-form {
+  margin-bottom: 1.5rem;
+}
+
+.status-form .actions {
+  margin-top: 0;
+}
+
+.status-form .banner,
+#note-form .banner {
+  margin-bottom: 0.75rem;
 }
 
 .notes {

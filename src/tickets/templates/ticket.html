@@ -3,17 +3,18 @@
 {% block title %}Ticket — Campus IT Help Desk{% endblock %}
 
 {% block content %}
-<p><a href="{{ url_for('queue_page') }}">Back to queue</a></p>
+<p class="page-eyebrow" id="topbar-title" hidden>Update Ticket</p>
 
 <div id="message" role="alert" hidden></div>
+<p id="back-link" hidden><a href="{{ url_for('queue_page') }}">Back to queue</a></p>
 
 <p class="empty-state" id="loading">Loading ticket...</p>
 
 <article id="ticket" hidden>
   <h1 class="page-title" id="ticket-title"></h1>
   <p class="lede">
-    Save changes can update status only, an internal note only, or both at
-    once. Priority is set when the ticket is submitted and cannot be changed.
+    Change the status and save, or add an internal note for the IT team.
+    Priority is set when the ticket is submitted and cannot be changed.
   </p>
 
   <ul class="meta-list">
@@ -23,7 +24,7 @@
     <li>
       <label>
         Status
-        <select name="status" form="ticket-update" id="status-select">
+        <select name="status" form="status-form" id="status-select">
           <option>Open</option>
           <option>In progress</option>
           <option>Resolved</option>
@@ -37,9 +38,18 @@
   <h2>Description</h2>
   <p class="description" id="ticket-description"></p>
 
+  <form id="status-form" class="status-form">
+    <div id="status-message" role="status" hidden></div>
+    <div class="actions">
+      <button class="btn btn-primary" type="submit" id="save-button">Save changes</button>
+      <a class="btn btn-secondary" href="{{ url_for('queue_page') }}">Cancel changes</a>
+    </div>
+  </form>
+
   <div class="card">
-    <h2>Update ticket</h2>
-    <form id="ticket-update">
+    <h2>Add a note</h2>
+    <form id="note-form">
+      <div id="note-message" role="status" hidden></div>
       <div class="form-grid">
         <label class="full">
           Internal note (IT staff)
@@ -48,8 +58,7 @@
         </label>
       </div>
       <div class="actions">
-        <button class="btn btn-primary" type="submit" id="save-button">Save changes</button>
-        <button class="btn btn-secondary" type="reset">Cancel changes</button>
+        <button class="btn btn-primary" type="submit" id="note-button">Add Note</button>
       </div>
     </form>
   </div>
@@ -65,10 +74,14 @@
   const message = document.getElementById("message");
   const loading = document.getElementById("loading");
   const article = document.getElementById("ticket");
-  const form = document.getElementById("ticket-update");
+  const statusForm = document.getElementById("status-form");
   const statusSelect = document.getElementById("status-select");
-  const noteInput = document.getElementById("note-input");
+  const statusMessage = document.getElementById("status-message");
   const saveButton = document.getElementById("save-button");
+  const noteForm = document.getElementById("note-form");
+  const noteInput = document.getElementById("note-input");
+  const noteMessage = document.getElementById("note-message");
+  const noteButton = document.getElementById("note-button");
   let current = null;
 
   function text(id, value) {
@@ -95,19 +108,21 @@
     text("ticket-created", formatDate(ticket.createdAt));
     text("ticket-updated", formatDate(ticket.updatedAt));
     text("ticket-description", ticket.description);
-    statusSelect.value = ticket.status;
     for (const option of statusSelect.options) {
       option.defaultSelected = option.value === ticket.status;
     }
+    statusSelect.value = ticket.status;
     document.getElementById("notes").replaceChildren(...ticket.notes.map(noteElement));
     loading.hidden = true;
     article.hidden = false;
+    document.getElementById("topbar-title").hidden = false;
   }
 
   async function loadTicket() {
     if (!ticketId) {
       loading.hidden = true;
       showBanner(message, "No ticket id given. Open a ticket from the queue.", "error");
+      document.getElementById("back-link").hidden = false;
       return false;
     }
     const result = await api("/tickets/" + encodeURIComponent(ticketId));
@@ -115,49 +130,55 @@
       loading.hidden = true;
       article.hidden = true;
       showBanner(message, errorMessage(result, "Could not load the ticket."), "error");
+      document.getElementById("back-link").hidden = false;
       return false;
     }
     render(result.data);
     return true;
   }
 
-  form.addEventListener("submit", async (event) => {
+  statusForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     hideBanner(message);
+    hideBanner(statusMessage);
 
-    const newStatus = statusSelect.value;
-    const note = noteInput.value.trim();
-    const statusChanged = newStatus !== current.status;
-    if (!statusChanged && !note) {
-      showBanner(message, "Nothing to save. Change the status or write a note.", "error");
+    const unchanged = statusSelect.value === current.status;
+    setBusy(saveButton, true, "Saving...");
+    const result = await api("/tickets/" + encodeURIComponent(current.id), {
+      method: "PATCH",
+      body: { status: statusSelect.value },
+    });
+    setBusy(saveButton, false);
+    if (!result.ok) {
+      showBanner(statusMessage, errorMessage(result, "Could not save the status."), "error");
       return;
     }
-
-    setBusy(saveButton, true, "Saving...");
-    const url = "/tickets/" + encodeURIComponent(current.id);
-    if (statusChanged) {
-      const result = await api(url, { method: "PATCH", body: { status: newStatus } });
-      if (!result.ok) {
-        setBusy(saveButton, false);
-        showBanner(message, errorMessage(result, "Could not save the status."), "error");
-        return;
-      }
+    render(result.data);
+    if (unchanged) {
+      showBanner(statusMessage, "Status unchanged. Last updated refreshed.", "error");
+    } else {
+      showBanner(statusMessage, "Status saved.", "success");
     }
-    if (note) {
-      const result = await api(url + "/notes", { method: "POST", body: { body: note } });
-      if (!result.ok) {
-        setBusy(saveButton, false);
-        await loadTicket();
-        const prefix = statusChanged ? "Status saved, but the note was not: " : "";
-        showBanner(message, prefix + errorMessage(result, "Could not save the note."), "error");
-        return;
-      }
-    }
+  });
 
+  noteForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    hideBanner(message);
+    hideBanner(noteMessage);
+
+    setBusy(noteButton, true, "Adding...");
+    const result = await api("/tickets/" + encodeURIComponent(current.id) + "/notes", {
+      method: "POST",
+      body: { body: noteInput.value },
+    });
+    setBusy(noteButton, false);
+    if (!result.ok) {
+      showBanner(noteMessage, errorMessage(result, "Could not add the note."), "error");
+      return;
+    }
     noteInput.value = "";
     await loadTicket();
-    setBusy(saveButton, false);
-    showBanner(message, "Changes saved.", "success");
+    showBanner(noteMessage, "Note added.", "success");
   });
 
   loadTicket().then((loaded) => {

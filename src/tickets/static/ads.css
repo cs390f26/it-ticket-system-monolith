@@ -1,0 +1,87 @@
+/* Just-for-fun ad slot. Kept separate from styles.css so it can be removed cleanly. */
+
+.ad-slot {
+  width: min(100% - 2rem, 760px);
+  margin: 0 auto 2rem;
+  animation: fade-up 400ms ease-out both;
+}
+
+.ad-frame {
+  position: relative;
+  aspect-ratio: 1024 / 682;
+  overflow: hidden;
+  border-radius: var(--radius);
+  box-shadow: 0 6px 20px rgba(16, 24, 40, 0.15);
+  background: #111827;
+}
+
+.ad-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 700ms ease;
+}
+
+.ad-image.is-active {
+  opacity: 1;
+}
+
+.ad-label {
+  position: absolute;
+  top: 0.6rem;
+  left: 0.6rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(17, 24, 39, 0.7);
+  color: #e5e7eb;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.ad-close {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(17, 24, 39, 0.7);
+  color: #fff;
+  font-size: 1.3rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color 160ms ease;
+}
+
+.ad-close:hover {
+  background: rgba(17, 24, 39, 0.9);
+}
+
+.ad-dots {
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+}
+
+.ad-dot {
+  width: 10px;
+  height: 10px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--line);
+  cursor: pointer;
+  transition: background-color 160ms ease, transform 160ms ease;
+}
+
+.ad-dot.is-active {
+  background: var(--brand);
+  transform: scale(1.2);
+}
