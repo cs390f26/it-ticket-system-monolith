@@ -19,9 +19,9 @@ python -m tickets.app
 
 Open http://127.0.0.1:5000. Set `PORT` to use a different port.
 
-Tickets are kept in memory and seeded from `data/sample_data.json` on every start, so changes are lost when the server stops. Set `TICKETS_DATA_FILE` to seed from a different file.
+Tickets are stored in a SQLite file on this machine. `TICKETS_DB_PATH` sets that file (default `data/tickets.db`). On startup the app creates the tables if needed and, when the database is empty, seeds it from `TICKETS_DATA_FILE` (default `data/sample_data.json`). A restart keeps saved tickets. `/health` checks that the database can be queried.
 
-To serve it the way it will run on EC2 (one worker, since data lives in memory):
+To serve it the way it will run on EC2 (one worker, SQLite file beside the app):
 
 ```bash
 gunicorn --workers 1 --bind 0.0.0.0:8000 "tickets.app:launch()"
@@ -39,7 +39,7 @@ pytest
 - `src/tickets/tickets.py`: `TicketApp`, all ticket rules and validation.
 - `src/tickets/templates/`: Jinja pages. Each extends `base.html`.
 - `src/tickets/static/`: `styles.css` and `app.js` (shared fetch and formatting helpers).
-- `src/db.py`: reserved for the database phase.
+- `src/db.py`: SQLite schema, connection, and queries.
 
 ## API quick check
 

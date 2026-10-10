@@ -5,14 +5,14 @@ from tickets.tickets import TicketApp
 
 
 @pytest.fixture
-def ticket_app():
+def ticket_app(tmp_path):
     """A fresh TicketApp seeded with the sample data for every test."""
-    return TicketApp.from_file(DEFAULT_DATA_FILE)
+    return TicketApp.from_file(DEFAULT_DATA_FILE, tmp_path / "tickets.db")
 
 
 @pytest.fixture
-def empty_app():
-    return TicketApp()
+def empty_app(tmp_path):
+    return TicketApp.empty(tmp_path / "empty.db")
 
 
 @pytest.fixture
