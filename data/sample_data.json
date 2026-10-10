@@ -9,7 +9,8 @@
       "category": "Hardware",
       "priority": "Urgent",
       "status": "In progress",
-      "created_at": "2026-09-10T15:40:00.000Z"
+      "created_at": "2026-09-10T15:40:00.000Z",
+      "updated_at": "2026-09-10T18:05:00.000Z"
     },
     {
       "ticket_id": "HD-1046",
@@ -20,7 +21,8 @@
       "category": "Other",
       "priority": "High",
       "status": "Open",
-      "created_at": "2026-09-12T08:05:00.000Z"
+      "created_at": "2026-09-12T08:05:00.000Z",
+      "updated_at": "2026-09-12T08:05:00.000Z"
     },
     {
       "ticket_id": "HD-1042",
@@ -31,7 +33,8 @@
       "category": "Network",
       "priority": "High",
       "status": "Open",
-      "created_at": "2026-09-11T09:14:00.000Z"
+      "created_at": "2026-09-11T09:14:00.000Z",
+      "updated_at": "2026-09-11T09:14:00.000Z"
     },
     {
       "ticket_id": "HD-1044",
@@ -42,7 +45,8 @@
       "category": "Software",
       "priority": "Medium",
       "status": "Open",
-      "created_at": "2026-09-10T11:20:00.000Z"
+      "created_at": "2026-09-10T11:20:00.000Z",
+      "updated_at": "2026-09-10T11:20:00.000Z"
     },
     {
       "ticket_id": "HD-1047",
@@ -53,7 +57,8 @@
       "category": "Hardware",
       "priority": "Medium",
       "status": "In progress",
-      "created_at": "2026-09-08T10:00:00.000Z"
+      "created_at": "2026-09-08T10:00:00.000Z",
+      "updated_at": "2026-09-08T14:15:00.000Z"
     },
     {
       "ticket_id": "HD-1045",
@@ -64,7 +69,8 @@
       "category": "Account",
       "priority": "Low",
       "status": "Resolved",
-      "created_at": "2026-09-09T13:05:00.000Z"
+      "created_at": "2026-09-09T13:05:00.000Z",
+      "updated_at": "2026-09-09T16:30:00.000Z"
     }
   ],
   "notes": [
