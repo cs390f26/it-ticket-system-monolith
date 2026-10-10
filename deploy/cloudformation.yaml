@@ -1,0 +1,59 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  IT ticket system on a single EC2 instance with a security group for SSH and
+  HTTP. User data downloads deploy/userdata.sh from GitHub and runs it.
+  Push userdata.sh to main before creating the stack.
+
+Parameters:
+  GitHubUsername:
+    Type: String
+    Default: cs390f26
+    Description: >-
+      GitHub user or organization that hosts this repo. The stack downloads
+      https://raw.githubusercontent.com/<username>/it-ticket-system-monolith/main/deploy/userdata.sh
+    AllowedPattern: "^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$"
+    ConstraintDescription: A GitHub username (letters, numbers, hyphens).
+
+Resources:
+  WebSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: IT ticket system - SSH and HTTP
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+          Description: SSH
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+          Description: HTTP
+      Tags:
+        - Key: Name
+          Value: it-ticket-system-web
+
+  TicketInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: "{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64}}"
+      InstanceType: t3.micro
+      KeyName: vockey
+      SecurityGroupIds:
+        - !GetAtt WebSecurityGroup.GroupId
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -euo pipefail
+          curl -fsSL "https://raw.githubusercontent.com/${GitHubUsername}/it-ticket-system-monolith/main/deploy/userdata.sh" \
+            -o /tmp/it-ticket-userdata.sh
+          bash /tmp/it-ticket-userdata.sh
+      Tags:
+        - Key: Name
+          Value: it-ticket-system
+
+Outputs:
+  PublicIP:
+    Description: Public IPv4 address of the instance
+    Value: !GetAtt TicketInstance.PublicIp
