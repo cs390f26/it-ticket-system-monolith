@@ -1,6 +1,7 @@
 import pytest
 
 from db import UnavailableError
+from tickets.app import create_app
 
 
 def test_health_ok(client):
@@ -168,6 +169,21 @@ def test_add_note_blank(client):
 def test_add_note_not_found(client):
     response = client.post("/tickets/HD-0000/notes", json={"body": "hello"})
     assert response.status_code == 404
+
+
+def test_unexpected_error_returns_json_500(ticket_app, monkeypatch):
+    flask_app = create_app(ticket_app)
+    flask_app.config["PROPAGATE_EXCEPTIONS"] = False
+
+    def crash(**kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(ticket_app, "list_tickets", crash)
+    response = flask_app.test_client().get("/tickets")
+    assert response.status_code == 500
+    assert response.get_json() == {
+        "error": {"code": "INTERNAL_ERROR", "message": "Something went wrong on the server"}
+    }
 
 
 def test_health_when_database_down(client, monkeypatch):

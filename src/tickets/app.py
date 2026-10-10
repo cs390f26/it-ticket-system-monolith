@@ -72,6 +72,10 @@ def create_app(ticket_app: TicketApp, show_ads: bool = True) -> Flask:
     def page_settings():
         return {"show_ads": show_ads}
 
+    @app.errorhandler(500)
+    def internal_error(_exc):
+        return _error("INTERNAL_ERROR", "Something went wrong on the server", 500)
+
     @app.get("/")
     def index_page():
         return render_template("index.html")

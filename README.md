@@ -30,6 +30,7 @@ Users can:
 |-----|----------|
 | [Development setup](docs/development.md) | Virtual environment, install, run the app, run the tests |
 | [Deploy on EC2](docs/deploy.md) | Launching the app on an EC2 instance |
+| [Design](docs/design.md) | Layers, data representations, and how data flows for each page |
 | [Flask API plan](docs/flask-api-plan.md) | Routes, layers, and how they map to the specs |
 
 ## Quick start

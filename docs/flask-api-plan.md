@@ -72,7 +72,7 @@ This starts right after the API is working. The pages are ported from the mockup
 - **How the pages get data:** each page uses `fetch()` against the JSON API with relative URLs such as `/tickets`, the same way the voting templates work.
   - Submit page: `POST /tickets`, then go to `/ticket?id=<new id>`. Show the API's 400 message inline.
   - Queue page: `GET /tickets`, with status and priority dropdowns that re-fetch with query parameters. Show an empty state when no tickets match.
-  - Detail page: `GET /tickets/<id>`. "Save changes" sends `PATCH` if the status changed and `POST .../notes` if a note was typed, then reloads the ticket. A bad id shows "Ticket not found" with a link back to the queue.
+  - Detail page: `GET /tickets/<id>`. "Save changes" sends `PATCH` with the status (even if unchanged, which refreshes `updatedAt`). "Add Note" sends `POST .../notes` and reloads the ticket. "Cancel changes" returns to the queue. A bad id shows "Ticket not found" with a link back to the queue.
 - **Mockup fixes:** add "Other" to the submit page's category list (the spec requires it). Add the filter dropdowns the stylesheet already has styles for. Remove the "static mockup" wording.
 - **Animation, kept light:** CSS only, with no JavaScript animation libraries and no build step. That means a short fade-in when page content loads, hover and focus transitions on buttons, nav links, and table rows, and a disabled "Saving..." state on buttons while a request runs. Everything is turned off for users who set `prefers-reduced-motion`. Nothing depends on timing, so swapping in AWS pieces later won't affect the pages.
 - **Tests:** add page-route tests checking that each page returns 200.
