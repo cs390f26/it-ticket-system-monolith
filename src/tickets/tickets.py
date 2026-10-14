@@ -78,43 +78,42 @@ STATUS_MESSAGE = "Status must be Open, In progress, or Resolved"
 class TicketApp:
     """Ticket rules for the help desk.
 
-    Rows live in the SQLite file at db_path. Validation stays here; queries
-    stay in db.py. updated_at starts equal to created_at and changes only
-    when the status is saved.
+    Rows live in MySQL. Validation stays here; queries stay in db.py.
+    updated_at starts equal to created_at and changes only when the status
+    is saved.
     """
 
-    def __init__(self, db_path: str | Path):
-        self._db_path = Path(db_path)
+    def __init__(self, config: db.DbConfig):
+        self._config = config
         self._lock = threading.Lock()
 
     @classmethod
-    def from_file(cls, data_path: str | Path, db_path: str | Path) -> "TicketApp":
+    def from_file(cls, data_path: str | Path, config: db.DbConfig | None = None) -> "TicketApp":
         """Create the schema and seed an empty database from a JSON file."""
         with open(data_path, encoding="utf-8") as f:
             data = json.load(f)
-        return cls.from_data(db_path, data)
+        return cls.from_data(data, config)
 
     @classmethod
-    def from_data(cls, db_path: str | Path, data: dict) -> "TicketApp":
+    def from_data(cls, data: dict, config: db.DbConfig | None = None) -> "TicketApp":
         """Create the schema and seed an empty database from ticket and note rows."""
-        path = Path(db_path)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        conn = db.connect(path)
+        config = config or db.config_from_env()
+        conn = db.connect(config)
         try:
             db.init_db(conn)
             db.seed_if_empty(conn, data)
         finally:
             conn.close()
-        return cls(path)
+        return cls(config)
 
     @classmethod
-    def empty(cls, db_path: str | Path) -> "TicketApp":
+    def empty(cls, config: db.DbConfig | None = None) -> "TicketApp":
         """Create the schema with no tickets."""
-        return cls.from_data(db_path, {"tickets": [], "notes": []})
+        return cls.from_data({"tickets": [], "notes": []}, config)
 
     @contextmanager
     def _connection(self):
-        conn = db.connect(self._db_path)
+        conn = db.connect(self._config)
         try:
             yield conn
         finally:

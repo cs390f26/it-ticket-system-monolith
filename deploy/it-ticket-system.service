@@ -8,6 +8,13 @@ Type=simple
 User=ec2-user
 Group=ec2-user
 WorkingDirectory=/home/ec2-user/it-ticket-system-monolith
+# Keep this password the same as deploy/userdata-db.sh and deploy/userdata-web.sh.
+# userdata-web.sh replaces MYSQL_HOST with the database instance private IP.
+Environment=MYSQL_HOST=127.0.0.1
+Environment=MYSQL_PORT=3306
+Environment=MYSQL_USER=tickets
+Environment=MYSQL_PASSWORD=Tickets-390!
+Environment=MYSQL_DATABASE=tickets
 # Bind to port 80 without running the whole process as root.
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE

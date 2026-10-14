@@ -9,13 +9,12 @@ Institution: Moravian University
 | Workflow | Status |
 |----------|--------|
 | Tests | [![Tests](https://github.com/cs390f26/it-ticket-system-monolith/actions/workflows/run_tests.yml/badge.svg)](https://github.com/cs390f26/it-ticket-system-monolith/actions/workflows/run_tests.yml) |
-| Deploy | [![Deploy](https://github.com/cs390f26/it-ticket-system-monolith/actions/workflows/deploy.yml/badge.svg)](https://github.com/cs390f26/it-ticket-system-monolith/actions/workflows/deploy.yml) |
 
 ## Project Overview
 
 This is the monolithic implementation of the IT ticket system. See the [specs repository](https://github.com/cs390f26/it-ticket-system-specs) for the use cases, API, database schema, sample data, and UI mockups.
 
-**Monolithic** here means the Flask web server and the SQLite database run together on a single machine (one EC2 instance in production).
+The application is one Flask codebase. In production the web server and MySQL run on separate EC2 instances in the same VPC. The web instance reaches MySQL at the database instance's private IP.
 
 Users can:
 
@@ -29,9 +28,9 @@ Users can:
 | Doc | Contents |
 |-----|----------|
 | [Development setup](docs/development.md) | Virtual environment, install, run the app, run the tests |
-| [Deploy on EC2](docs/deploy.md) | Launching the app on an EC2 instance |
+| [Deploy on EC2](docs/deploy.md) | Web instance and MySQL instance in the same VPC |
 | [Design](docs/design.md) | Layers, data representations, and how data flows for each page |
-| [Flask API plan](docs/flask-api-plan.md) | Routes, layers, and how they map to the specs |
+| [Flask API plan](docs/flask-api-plan.md) | Finished build plan. Current behavior is in Design |
 
 ## Quick start
 
@@ -43,4 +42,4 @@ pip install -e .
 python -m tickets.app
 ```
 
-Then open [http://127.0.0.1:5000](http://127.0.0.1:5000). See [Development setup](docs/development.md) for full steps.
+MySQL 8 has to be running first, with the `MYSQL_*` settings in [Development setup](docs/development.md). Then open [http://127.0.0.1:5000](http://127.0.0.1:5000).

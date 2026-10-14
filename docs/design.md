@@ -5,16 +5,16 @@ This document describes the design of the Flask server and how data moves throug
 1. **Browser** (`templates/*.html`, `static/app.js`): HTML pages whose JavaScript calls the JSON API with `fetch()` and draws the results.
 2. **API** (`src/tickets/app.py`): handles HTTP. Parses requests, calls the application, turns results and errors into JSON responses.
 3. **Application** (`src/tickets/tickets.py`, class `TicketApp`): the ticket rules. Validation, default priority, the opening note, ticket ids, timestamps.
-4. **DB** (`src/db.py`): the only code that knows about SQLite. Turns application requests into SQL and SQL rows into plain Python dicts.
+4. **DB** (`src/db.py`): the only code that knows about MySQL. Turns application requests into SQL and SQL rows into plain Python dicts.
 
 ```
-Browser  --fetch /tickets-->  app.py  --list_tickets()-->  TicketApp  --list_tickets()-->  db.py  --SQL-->  SQLite (data/tickets.db)
+Browser  --fetch /tickets-->  app.py  --list_tickets()-->  TicketApp  --list_tickets()-->  db.py  --SQL-->  MySQL (database EC2)
 Browser  <--JSON-----------  app.py  <--list of dicts---  TicketApp  <--list of dicts---  db.py  <--rows--
 ```
 
 Each layer only calls the one below it. The page routes (`/`, `/submit`, `/queue`, `/ticket`) return HTML with **no ticket data in it**; the page's JavaScript asks the API for the data after it loads. This is the same pattern as the voting app.
 
-Because SQL lives only in `db.py`, a later phase can move to a hosted database by rewriting `db.py` without touching the ticket rules or the routes.
+Because SQL lives only in `db.py`, ticket rules and routes do not open MySQL themselves.
 
 ## Data representations
 
@@ -22,7 +22,7 @@ The data for this application is a collection of tickets, each with a list of no
 
 ### Database
 
-Two tables (full schema in `it-ticket-system-specs/db.md` and `SCHEMA` in `src/db.py`):
+Two tables in MySQL 8 (full schema in `it-ticket-system-specs/db.md` and the `CREATE TABLE` statements in `src/db.py`). In production that database is on its own EC2 instance. Locally it is MySQL on this machine.
 
 - **`tickets`**: `ticket_id` (primary key, e.g. `HD-1042`), `title`, `description`, `requester_name`, `requester_email`, `category`, `priority`, `status`, `created_at`, `updated_at`
 - **`notes`**: `note_id` (primary key), `ticket_id` (references `tickets`), `author` (`System` or `IT staff`), `body`, `created_at`
@@ -113,7 +113,7 @@ Which common status codes the API returns, and why the others are not used.
 | Code | Used? | Where |
 |---|---|---|
 | 500 Internal Server Error | Yes | Any unexpected exception, i.e. a bug. Returned as JSON (`INTERNAL_ERROR`) so the page can show the message. When running with `debug=True` locally, Flask shows its debugger page instead |
-| 502 Bad Gateway | No | Only happens when a proxy (for example nginx or a load balancer) sits in front of gunicorn and gunicorn does not answer. On one EC2 instance, gunicorn serves requests directly |
+| 502 Bad Gateway | No | Only happens when a proxy (for example nginx or a load balancer) sits in front of gunicorn and gunicorn does not answer. On the web instance, gunicorn serves requests directly |
 | 503 Service Unavailable | Yes | The database cannot be opened or a query fails (`SERVICE_UNAVAILABLE`). `/health` returns `{"status": "unavailable"}` with 503 |
 
 ## Walkthrough: loading the Ticket Queue
@@ -125,7 +125,7 @@ What happens when a user opens `/queue?status=Open`:
 3. **JavaScript calls the API.** `loadQueue()` builds the query string and calls `api("/tickets?status=Open")`, the shared `fetch()` helper in `static/app.js`.
 4. **API layer.** `list_tickets()` in `app.py` reads `status` and `priority` from the query string (an empty value counts as "no filter") and calls `ticket_app.list_tickets(status="Open", priority=None)`.
 5. **Application layer.** `TicketApp.list_tickets()` checks that `Open` is one of `Open`, `In progress`, `Resolved`; a bad value raises `ValidationError`. It then opens a database connection and calls `db.list_tickets(conn, "Open", None)`.
-6. **DB layer.** `db.list_tickets()` runs one `SELECT` on the `tickets` table. `WHERE (? IS NULL OR status = ?)` applies only the filters that were given. `ORDER BY CASE priority ... END, created_at DESC` sorts Urgent → High → Medium → Low, newest first within each priority. Each row becomes a dict.
+6. **DB layer.** `db.list_tickets()` runs one `SELECT` on the `tickets` table. `WHERE (%s IS NULL OR status = %s)` applies only the filters that were given. `ORDER BY CASE priority ... END, created_at DESC` sorts Urgent → High → Medium → Low, newest first within each priority. Each row becomes a dict. PyMySQL sends the query to the MySQL server named by `MYSQL_HOST`.
 7. **Back up through the layers.** The list of dicts returns to `app.py`, where `_summary_json()` renames fields to camelCase and drops the ones the queue does not show. Flask sends `200` with `{"tickets": [...]}`.
 8. **Browser draws the table.** `loadQueue()` turns each ticket into a table row: the ID becomes a link to `/ticket?id=HD-1042`, priority and status become colored badges (`priorityBadge`, `statusBadge`), and `createdAt` is formatted as a date. If the list is empty it shows "No tickets match these filters."
 

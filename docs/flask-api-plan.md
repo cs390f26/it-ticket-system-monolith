@@ -1,5 +1,9 @@
 # Flask API server plan
 
+This plan is finished. The running system stores tickets in MySQL 8. In production the Flask app and MySQL run on separate EC2 instances. See [Design](design.md), [Development setup](development.md), and [Deploy on EC2](deploy.md) for how it works now.
+
+The notes below are the original build plan. Early phases used an in-memory list and did not deploy the database. That is not how the app works anymore.
+
 Build the IT ticket Flask server first, using the same split between routes and ticket logic as the professor's `voting_monolith`. The routes implement `it-ticket-system-specs/openapi.yaml` exactly. No database is designed or built now; tickets live in a plain in-memory list loaded from sample data, so the server runs and can be tested. HTML/CSS templates come in a later phase.
 
 ## Tasks

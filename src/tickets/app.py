@@ -6,7 +6,6 @@ from flask import Flask, jsonify, render_template, request
 from tickets.tickets import NotFoundError, TicketApp, UnavailableError, ValidationError
 
 DEFAULT_DATA_FILE = Path(__file__).resolve().parents[2] / "data" / "sample_data.json"
-DEFAULT_DB_FILE = Path(__file__).resolve().parents[2] / "data" / "tickets.db"
 
 
 def _error(code: str, message: str, status: int):
@@ -174,15 +173,17 @@ def create_app(ticket_app: TicketApp, show_ads: bool = True) -> Flask:
 def launch() -> Flask:
     """Build TicketApp + Flask app from environment settings (for gunicorn too).
 
-    TICKETS_DB_PATH: SQLite file on this machine (defaults to data/tickets.db).
+    MYSQL_HOST, MYSQL_PORT, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE:
+    MySQL connection. Defaults are 127.0.0.1:3306, user tickets, database
+    tickets. The password has no default. In production MYSQL_HOST is the
+    database instance's private IP.
     TICKETS_DATA_FILE: sample data JSON used only when that database is empty
     (defaults to data/sample_data.json in this repo).
     TICKETS_SHOW_ADS: set to 0 to hide the just-for-fun ad strip.
     """
-    db_path = os.environ.get("TICKETS_DB_PATH", str(DEFAULT_DB_FILE))
     data_file = os.environ.get("TICKETS_DATA_FILE", str(DEFAULT_DATA_FILE))
     show_ads = os.environ.get("TICKETS_SHOW_ADS", "1") != "0"
-    return create_app(TicketApp.from_file(data_file, db_path), show_ads=show_ads)
+    return create_app(TicketApp.from_file(data_file), show_ads=show_ads)
 
 
 if __name__ == "__main__":

@@ -187,7 +187,7 @@ def test_unexpected_error_returns_json_500(ticket_app, monkeypatch):
 
 
 def test_health_when_database_down(client, monkeypatch):
-    def fail(path):
+    def fail(_config):
         raise UnavailableError("Service unavailable")
 
     monkeypatch.setattr("db.connect", fail)
@@ -213,7 +213,7 @@ def test_health_when_database_down(client, monkeypatch):
     ],
 )
 def test_routes_when_database_down(client, monkeypatch, method, path, kwargs):
-    def fail(db_path):
+    def fail(_config):
         raise UnavailableError("Service unavailable")
 
     monkeypatch.setattr("db.connect", fail)

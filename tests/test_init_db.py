@@ -10,8 +10,15 @@ from tickets.app import DEFAULT_DATA_FILE
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "init_db.py"
 
 
-def _run(db_path, *args):
-    env = {**os.environ, "TICKETS_DB_PATH": str(db_path)}
+def _run(config, *args):
+    env = {
+        **os.environ,
+        "MYSQL_HOST": config.host,
+        "MYSQL_PORT": str(config.port),
+        "MYSQL_USER": config.user,
+        "MYSQL_PASSWORD": config.password,
+        "MYSQL_DATABASE": config.database,
+    }
     return subprocess.run(
         [sys.executable, str(SCRIPT), *args],
         env=env,
@@ -21,10 +28,12 @@ def _run(db_path, *args):
     )
 
 
-def _ticket_count(db_path):
-    conn = db.connect(db_path)
+def _ticket_count(config):
+    conn = db.connect(config)
     try:
-        return conn.execute("SELECT COUNT(*) FROM tickets").fetchone()[0]
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) AS ticket_count FROM tickets")
+            return cur.fetchone()["ticket_count"]
     finally:
         conn.close()
 
@@ -34,38 +43,37 @@ def _sample_count():
         return len(json.load(f)["tickets"])
 
 
-def test_creates_tables_and_loads_sample_data(tmp_path):
-    path = tmp_path / "tickets.db"
-    _run(path)
-    assert _ticket_count(path) == _sample_count()
+def test_creates_tables_and_loads_sample_data(mysql_config):
+    _run(mysql_config)
+    assert _ticket_count(mysql_config) == _sample_count()
 
 
-def test_running_again_keeps_existing_tickets(tmp_path):
-    path = tmp_path / "tickets.db"
-    _run(path)
-    conn = db.connect(path)
+def test_running_again_keeps_existing_tickets(mysql_config):
+    _run(mysql_config)
+    conn = db.connect(mysql_config)
     try:
-        conn.execute("DELETE FROM notes WHERE ticket_id = 'HD-1042'")
-        conn.execute("DELETE FROM tickets WHERE ticket_id = 'HD-1042'")
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM notes WHERE ticket_id = %s", ("HD-1042",))
+            cur.execute("DELETE FROM tickets WHERE ticket_id = %s", ("HD-1042",))
         conn.commit()
     finally:
         conn.close()
 
-    _run(path)
-    assert _ticket_count(path) == _sample_count() - 1
+    _run(mysql_config)
+    assert _ticket_count(mysql_config) == _sample_count() - 1
 
 
-def test_reset_starts_fresh(tmp_path):
-    path = tmp_path / "tickets.db"
-    _run(path)
-    conn = db.connect(path)
+def test_reset_starts_fresh(mysql_config):
+    _run(mysql_config)
+    conn = db.connect(mysql_config)
     try:
-        conn.execute("DELETE FROM notes")
-        conn.execute("DELETE FROM tickets")
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM notes")
+            cur.execute("DELETE FROM tickets")
         conn.commit()
     finally:
         conn.close()
 
-    result = _run(path, "--reset")
-    assert "Deleted" in result.stdout
-    assert _ticket_count(path) == _sample_count()
+    result = _run(mysql_config, "--reset")
+    assert "Reset" in result.stdout
+    assert _ticket_count(mysql_config) == _sample_count()

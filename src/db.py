@@ -1,38 +1,45 @@
-"""SQLite schema and queries for tickets and notes.
+"""MySQL schema and queries for tickets and notes.
 
-Connection setup and SQL stay in this module so a later hosted database can
-replace them without changing ticket rules or HTTP routes.
+Connection setup and SQL stay in this module so ticket rules and HTTP routes
+do not depend on the database.
 """
 
-import sqlite3
-from pathlib import Path
+import os
+import re
+from dataclasses import dataclass
+
+import pymysql
+from pymysql.cursors import DictCursor
 
 # Spec schema (it-ticket-system-specs/db.md). IF NOT EXISTS keeps a restart
-# from wiping an existing file.
-SCHEMA = """
+# from dropping an existing database. Indexes live on the CREATE TABLE so a
+# second startup does not try to add them again.
+_TICKETS_TABLE = """
 CREATE TABLE IF NOT EXISTS tickets (
-  ticket_id TEXT PRIMARY KEY,
-  title TEXT NOT NULL,
-  description TEXT NOT NULL,
-  requester_name TEXT NOT NULL,
-  requester_email TEXT NOT NULL,
-  category TEXT NOT NULL CHECK (category IN ('Hardware', 'Software', 'Network', 'Account', 'Other')),
-  priority TEXT NOT NULL CHECK (priority IN ('Low', 'Medium', 'High', 'Urgent')),
-  status TEXT NOT NULL CHECK (status IN ('Open', 'In progress', 'Resolved')),
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
-);
+  ticket_id VARCHAR(32) PRIMARY KEY,
+  title VARCHAR(120) NOT NULL,
+  description VARCHAR(2000) NOT NULL,
+  requester_name VARCHAR(80) NOT NULL,
+  requester_email VARCHAR(120) NOT NULL,
+  category VARCHAR(16) NOT NULL CHECK (category IN ('Hardware', 'Software', 'Network', 'Account', 'Other')),
+  priority VARCHAR(16) NOT NULL CHECK (priority IN ('Low', 'Medium', 'High', 'Urgent')),
+  status VARCHAR(16) NOT NULL CHECK (status IN ('Open', 'In progress', 'Resolved')),
+  created_at VARCHAR(32) NOT NULL,
+  updated_at VARCHAR(32) NOT NULL,
+  INDEX idx_tickets_created_at (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+"""
 
+_NOTES_TABLE = """
 CREATE TABLE IF NOT EXISTS notes (
-  note_id INTEGER PRIMARY KEY,
-  ticket_id TEXT NOT NULL REFERENCES tickets (ticket_id),
-  author TEXT NOT NULL CHECK (author IN ('System', 'IT staff')),
-  body TEXT NOT NULL,
-  created_at TEXT NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_tickets_created_at ON tickets (created_at);
-CREATE INDEX IF NOT EXISTS idx_notes_ticket_created ON notes (ticket_id, created_at);
+  note_id INT AUTO_INCREMENT PRIMARY KEY,
+  ticket_id VARCHAR(32) NOT NULL,
+  author VARCHAR(16) NOT NULL CHECK (author IN ('System', 'IT staff')),
+  body VARCHAR(1000) NOT NULL,
+  created_at VARCHAR(32) NOT NULL,
+  INDEX idx_notes_ticket_created (ticket_id, created_at),
+  CONSTRAINT fk_notes_ticket FOREIGN KEY (ticket_id) REFERENCES tickets (ticket_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 """
 
 TICKET_FIELDS = (
@@ -55,94 +62,158 @@ _NOTE_COLUMNS = ", ".join(NOTE_FIELDS)
 
 _INSERT_TICKET = f"""
 INSERT INTO tickets ({_TICKET_COLUMNS})
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
 """
 
 _INSERT_NOTE = """
 INSERT INTO notes (ticket_id, author, body, created_at)
-VALUES (?, ?, ?, ?)
+VALUES (%s, %s, %s, %s)
 """
 
 _INSERT_NOTE_WITH_ID = f"""
 INSERT INTO notes ({_NOTE_COLUMNS})
-VALUES (?, ?, ?, ?, ?)
+VALUES (%s, %s, %s, %s, %s)
 """
+
+_DB_NAME = re.compile(r"^[A-Za-z0-9_]+$")
 
 
 class UnavailableError(Exception):
     """Raised when the database cannot be reached or a statement fails."""
 
 
-def connect(path: str | Path) -> sqlite3.Connection:
-    """Open the SQLite file. Foreign keys are enforced on this connection."""
+@dataclass(frozen=True)
+class DbConfig:
+    """How to reach the MySQL server and which database to use."""
+
+    host: str
+    port: int
+    user: str
+    password: str
+    database: str
+
+
+def config_from_env(database: str | None = None) -> DbConfig:
+    """Read MYSQL_HOST, MYSQL_PORT, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE.
+
+    Host defaults to 127.0.0.1, port to 3306, user to tickets, and the
+    database name to tickets. The password has no default. Pass database to
+    use a different name (tests do this) while keeping the other settings.
+    """
+    return DbConfig(
+        host=os.environ.get("MYSQL_HOST", "127.0.0.1"),
+        port=int(os.environ.get("MYSQL_PORT", "3306")),
+        user=os.environ.get("MYSQL_USER", "tickets"),
+        password=os.environ.get("MYSQL_PASSWORD", ""),
+        database=database if database is not None else os.environ.get("MYSQL_DATABASE", "tickets"),
+    )
+
+
+def connect(config: DbConfig) -> pymysql.Connection:
+    """Open the MySQL database, creating it first when it is missing."""
+    _ensure_database(config)
     try:
-        conn = sqlite3.connect(path, timeout=5)
-    except sqlite3.Error as exc:
+        return pymysql.connect(
+            host=config.host,
+            port=config.port,
+            user=config.user,
+            password=config.password,
+            database=config.database,
+            charset="utf8mb4",
+            cursorclass=DictCursor,
+            autocommit=False,
+            connect_timeout=5,
+        )
+    except pymysql.Error as exc:
         raise UnavailableError("Service unavailable") from exc
-    conn.row_factory = sqlite3.Row
+
+
+def drop_database(config: DbConfig) -> None:
+    """Remove a database. Tests use this to clean up."""
+    name = _quote_db(config.database)
     try:
-        conn.execute("PRAGMA foreign_keys = ON")
-    except sqlite3.Error as exc:
+        conn = _server_connect(config)
+    except pymysql.Error as exc:
+        raise UnavailableError("Service unavailable") from exc
+    try:
+        with conn.cursor() as cur:
+            cur.execute(f"DROP DATABASE IF EXISTS {name}")
+    except pymysql.Error as exc:
+        raise UnavailableError("Service unavailable") from exc
+    finally:
         conn.close()
-        raise UnavailableError("Service unavailable") from exc
-    return conn
 
 
-def init_db(conn: sqlite3.Connection) -> None:
+def init_db(conn: pymysql.Connection) -> None:
     """Create the tables and indexes if they are not already there."""
     try:
-        conn.executescript(SCHEMA)
-    except sqlite3.Error as exc:
+        with conn.cursor() as cur:
+            cur.execute(_TICKETS_TABLE)
+            cur.execute(_NOTES_TABLE)
+    except pymysql.Error as exc:
         raise UnavailableError("Service unavailable") from exc
 
 
-def seed_if_empty(conn: sqlite3.Connection, data: dict) -> None:
+def reset_db(conn: pymysql.Connection) -> None:
+    """Drop both tables and create them again. Notes go first (foreign key)."""
+    try:
+        with conn.cursor() as cur:
+            cur.execute("DROP TABLE IF EXISTS notes")
+            cur.execute("DROP TABLE IF EXISTS tickets")
+    except pymysql.Error as exc:
+        raise UnavailableError("Service unavailable") from exc
+    init_db(conn)
+
+
+def seed_if_empty(conn: pymysql.Connection, data: dict) -> None:
     """Insert sample tickets and notes when the tickets table has no rows."""
     try:
-        count = conn.execute("SELECT COUNT(*) FROM tickets").fetchone()[0]
-        if count:
-            return
-        for ticket in data.get("tickets") or []:
-            updated_at = ticket.get("updated_at", ticket["created_at"])
-            conn.execute(
-                _INSERT_TICKET,
-                (
-                    ticket["ticket_id"],
-                    ticket["title"],
-                    ticket["description"],
-                    ticket["requester_name"],
-                    ticket["requester_email"],
-                    ticket["category"],
-                    ticket["priority"],
-                    ticket["status"],
-                    ticket["created_at"],
-                    updated_at,
-                ),
-            )
-        for note in data.get("notes") or []:
-            conn.execute(
-                _INSERT_NOTE_WITH_ID,
-                (
-                    note["note_id"],
-                    note["ticket_id"],
-                    note["author"],
-                    note["body"],
-                    note["created_at"],
-                ),
-            )
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) AS ticket_count FROM tickets")
+            count = cur.fetchone()["ticket_count"]
+            if count:
+                return
+            for ticket in data.get("tickets") or []:
+                updated_at = ticket.get("updated_at", ticket["created_at"])
+                cur.execute(
+                    _INSERT_TICKET,
+                    (
+                        ticket["ticket_id"],
+                        ticket["title"],
+                        ticket["description"],
+                        ticket["requester_name"],
+                        ticket["requester_email"],
+                        ticket["category"],
+                        ticket["priority"],
+                        ticket["status"],
+                        ticket["created_at"],
+                        updated_at,
+                    ),
+                )
+            for note in data.get("notes") or []:
+                cur.execute(
+                    _INSERT_NOTE_WITH_ID,
+                    (
+                        note["note_id"],
+                        note["ticket_id"],
+                        note["author"],
+                        note["body"],
+                        note["created_at"],
+                    ),
+                )
         conn.commit()
-    except sqlite3.Error as exc:
+    except pymysql.Error as exc:
         conn.rollback()
         raise UnavailableError("Service unavailable") from exc
 
 
-def ping(conn: sqlite3.Connection) -> None:
+def ping(conn: pymysql.Connection) -> None:
     """Confirm the database accepts a query."""
     _read(conn, "SELECT 1")
 
 
 def list_tickets(
-    conn: sqlite3.Connection,
+    conn: pymysql.Connection,
     status: str | None,
     priority: str | None,
 ) -> list[dict]:
@@ -152,8 +223,8 @@ def list_tickets(
         f"""
         SELECT {_TICKET_COLUMNS}
         FROM tickets
-        WHERE (? IS NULL OR status = ?)
-          AND (? IS NULL OR priority = ?)
+        WHERE (%s IS NULL OR status = %s)
+          AND (%s IS NULL OR priority = %s)
         ORDER BY
           CASE priority
             WHEN 'Urgent' THEN 1
@@ -168,17 +239,17 @@ def list_tickets(
     return [_row_dict(row, TICKET_FIELDS) for row in rows]
 
 
-def list_ticket_ids(conn: sqlite3.Connection) -> list[str]:
+def list_ticket_ids(conn: pymysql.Connection) -> list[str]:
     """Every ticket id, used to choose the next HD- number."""
     rows = _read(conn, "SELECT ticket_id FROM tickets")
     return [row["ticket_id"] for row in rows]
 
 
-def get_ticket(conn: sqlite3.Connection, ticket_id: str) -> dict | None:
+def get_ticket(conn: pymysql.Connection, ticket_id: str) -> dict | None:
     """One ticket plus its notes, oldest first. None when the id is missing."""
     rows = _read(
         conn,
-        f"SELECT {_TICKET_COLUMNS} FROM tickets WHERE ticket_id = ?",
+        f"SELECT {_TICKET_COLUMNS} FROM tickets WHERE ticket_id = %s",
         (ticket_id,),
     )
     if not rows:
@@ -189,7 +260,7 @@ def get_ticket(conn: sqlite3.Connection, ticket_id: str) -> dict | None:
         f"""
         SELECT {_NOTE_COLUMNS}
         FROM notes
-        WHERE ticket_id = ?
+        WHERE ticket_id = %s
         ORDER BY created_at ASC, note_id ASC
         """,
         (ticket_id,),
@@ -198,67 +269,72 @@ def get_ticket(conn: sqlite3.Connection, ticket_id: str) -> dict | None:
     return ticket
 
 
-def insert_ticket_with_note(conn: sqlite3.Connection, ticket: dict, note: dict) -> None:
+def insert_ticket_with_note(conn: pymysql.Connection, ticket: dict, note: dict) -> None:
     """Insert a ticket and its opening note in one transaction."""
     try:
-        conn.execute(
-            _INSERT_TICKET,
-            tuple(ticket[field] for field in TICKET_FIELDS),
-        )
-        conn.execute(
-            _INSERT_NOTE,
-            (note["ticket_id"], note["author"], note["body"], note["created_at"]),
-        )
+        with conn.cursor() as cur:
+            cur.execute(
+                _INSERT_TICKET,
+                tuple(ticket[field] for field in TICKET_FIELDS),
+            )
+            cur.execute(
+                _INSERT_NOTE,
+                (note["ticket_id"], note["author"], note["body"], note["created_at"]),
+            )
         conn.commit()
-    except sqlite3.Error as exc:
+    except pymysql.Error as exc:
         conn.rollback()
         raise UnavailableError("Service unavailable") from exc
 
 
 def save_status(
-    conn: sqlite3.Connection,
+    conn: pymysql.Connection,
     ticket_id: str,
     status: str,
     updated_at: str,
 ) -> bool:
     """Update status and updated_at. False when the ticket does not exist."""
     try:
-        found = conn.execute(
-            "SELECT 1 FROM tickets WHERE ticket_id = ?",
-            (ticket_id,),
-        ).fetchone()
-        if found is None:
-            return False
-        conn.execute(
-            "UPDATE tickets SET status = ?, updated_at = ? WHERE ticket_id = ?",
-            (status, updated_at, ticket_id),
-        )
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT 1 FROM tickets WHERE ticket_id = %s",
+                (ticket_id,),
+            )
+            found = cur.fetchone()
+            if found is None:
+                return False
+            cur.execute(
+                "UPDATE tickets SET status = %s, updated_at = %s WHERE ticket_id = %s",
+                (status, updated_at, ticket_id),
+            )
         conn.commit()
         return True
-    except sqlite3.Error as exc:
+    except pymysql.Error as exc:
         conn.rollback()
         raise UnavailableError("Service unavailable") from exc
 
 
 def insert_note(
-    conn: sqlite3.Connection,
+    conn: pymysql.Connection,
     ticket_id: str,
     author: str,
     body: str,
     created_at: str,
 ) -> dict:
-    """Append a note and return it, including the id SQLite assigned."""
+    """Append a note and return it, including the id MySQL assigned."""
     try:
-        cursor = conn.execute(
-            _INSERT_NOTE,
-            (ticket_id, author, body, created_at),
-        )
+        with conn.cursor() as cur:
+            cur.execute(
+                _INSERT_NOTE,
+                (ticket_id, author, body, created_at),
+            )
+            note_id = cur.lastrowid
         conn.commit()
-    except sqlite3.Error as exc:
+    except pymysql.Error as exc:
         conn.rollback()
         raise UnavailableError("Service unavailable") from exc
     return {
-        "note_id": cursor.lastrowid,
+        "note_id": note_id,
         "ticket_id": ticket_id,
         "author": author,
         "body": body,
@@ -266,12 +342,52 @@ def insert_note(
     }
 
 
-def _read(conn: sqlite3.Connection, sql: str, params: tuple = ()) -> list[sqlite3.Row]:
+def _server_connect(config: DbConfig) -> pymysql.Connection:
+    """Connect without selecting a database, so it can be created or dropped."""
+    return pymysql.connect(
+        host=config.host,
+        port=config.port,
+        user=config.user,
+        password=config.password,
+        charset="utf8mb4",
+        cursorclass=DictCursor,
+        autocommit=True,
+        connect_timeout=5,
+    )
+
+
+def _ensure_database(config: DbConfig) -> None:
+    name = _quote_db(config.database)
     try:
-        return conn.execute(sql, params).fetchall()
-    except sqlite3.Error as exc:
+        conn = _server_connect(config)
+    except pymysql.Error as exc:
+        raise UnavailableError("Service unavailable") from exc
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"CREATE DATABASE IF NOT EXISTS {name} "
+                "CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+            )
+    except pymysql.Error as exc:
+        raise UnavailableError("Service unavailable") from exc
+    finally:
+        conn.close()
+
+
+def _quote_db(name: str) -> str:
+    if not _DB_NAME.match(name):
+        raise UnavailableError("Service unavailable")
+    return f"`{name}`"
+
+
+def _read(conn: pymysql.Connection, sql: str, params: tuple = ()) -> list[dict]:
+    try:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            return list(cur.fetchall())
+    except pymysql.Error as exc:
         raise UnavailableError("Service unavailable") from exc
 
 
-def _row_dict(row: sqlite3.Row, fields: tuple[str, ...]) -> dict:
+def _row_dict(row: dict, fields: tuple[str, ...]) -> dict:
     return {field: row[field] for field in fields}

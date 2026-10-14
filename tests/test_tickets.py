@@ -141,28 +141,27 @@ def _stored_ticket(**overrides):
     return row
 
 
-def test_seed_keeps_stored_updated_at(tmp_path):
+def test_seed_keeps_stored_updated_at(mysql_config):
     tickets = [
         _stored_ticket(
             status="Resolved",
             updated_at="2026-09-02T15:30:00.000Z",
         )
     ]
-    app = TicketApp.from_data(tmp_path / "tickets.db", {"tickets": tickets, "notes": []})
+    app = TicketApp.from_data({"tickets": tickets, "notes": []}, mysql_config)
     assert app.get_ticket("HD-1")["updated_at"] == "2026-09-02T15:30:00.000Z"
 
 
-def test_seed_data_is_not_shared(tmp_path):
+def test_seed_data_is_not_shared(mysql_config):
     tickets = [_stored_ticket(created_at="x", updated_at="x")]
-    TicketApp.from_data(tmp_path / "tickets.db", {"tickets": tickets, "notes": []}).update_status(
+    TicketApp.from_data({"tickets": tickets, "notes": []}, mysql_config).update_status(
         "HD-1", "Resolved"
     )
     assert tickets[0]["status"] == "Open"
 
 
-def test_seed_does_not_replace_existing_rows(tmp_path):
-    path = tmp_path / "tickets.db"
+def test_seed_does_not_replace_existing_rows(mysql_config):
     data = {"tickets": [_stored_ticket()], "notes": []}
-    TicketApp.from_data(path, data).update_status("HD-1", "Resolved")
-    again = TicketApp.from_data(path, data)
+    TicketApp.from_data(data, mysql_config).update_status("HD-1", "Resolved")
+    again = TicketApp.from_data(data, mysql_config)
     assert again.get_ticket("HD-1")["status"] == "Resolved"

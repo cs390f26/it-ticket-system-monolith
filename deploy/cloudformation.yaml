@@ -1,8 +1,10 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >-
-  IT ticket system on a single EC2 instance with a security group for SSH and
-  HTTP. User data downloads deploy/userdata.sh from GitHub and runs it.
-  Push userdata.sh to main before creating the stack.
+  IT ticket system on two EC2 instances in the default VPC. The web instance
+  serves HTTP. The database instance runs MySQL 8. Port 3306 is open only to
+  the web security group. User data downloads deploy/userdata-db.sh and
+  deploy/userdata-web.sh from GitHub. Push both scripts to main before
+  creating the stack.
 
 Parameters:
   GitHubUsername:
@@ -10,7 +12,8 @@ Parameters:
     Default: cs390f26
     Description: >-
       GitHub user or organization that hosts this repo. The stack downloads
-      https://raw.githubusercontent.com/<username>/it-ticket-system-monolith/main/deploy/userdata.sh
+      https://raw.githubusercontent.com/<username>/it-ticket-system-monolith/main/deploy/userdata-db.sh
+      and userdata-web.sh.
     AllowedPattern: "^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$"
     ConstraintDescription: A GitHub username (letters, numbers, hyphens).
 
@@ -18,7 +21,7 @@ Resources:
   WebSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: IT ticket system - SSH and HTTP
+      GroupDescription: IT ticket system web - SSH and HTTP
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 22
@@ -34,8 +37,47 @@ Resources:
         - Key: Name
           Value: it-ticket-system-web
 
-  TicketInstance:
+  DatabaseSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: IT ticket system database - SSH and MySQL from the web instance
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+          Description: SSH
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          SourceSecurityGroupId: !GetAtt WebSecurityGroup.GroupId
+          Description: MySQL from the web instance
+      Tags:
+        - Key: Name
+          Value: it-ticket-system-db
+
+  DatabaseInstance:
     Type: AWS::EC2::Instance
+    Properties:
+      ImageId: "{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64}}"
+      InstanceType: t3.micro
+      KeyName: vockey
+      SecurityGroupIds:
+        - !GetAtt DatabaseSecurityGroup.GroupId
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -euo pipefail
+          curl -fsSL "https://raw.githubusercontent.com/${GitHubUsername}/it-ticket-system-monolith/main/deploy/userdata-db.sh" \
+            -o /tmp/it-ticket-userdata-db.sh
+          bash /tmp/it-ticket-userdata-db.sh
+      Tags:
+        - Key: Name
+          Value: it-ticket-system-db
+
+  WebInstance:
+    Type: AWS::EC2::Instance
+    DependsOn: DatabaseInstance
     Properties:
       ImageId: "{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64}}"
       InstanceType: t3.micro
@@ -43,17 +85,23 @@ Resources:
       SecurityGroupIds:
         - !GetAtt WebSecurityGroup.GroupId
       UserData:
-        Fn::Base64: !Sub |
-          #!/bin/bash
-          set -euo pipefail
-          curl -fsSL "https://raw.githubusercontent.com/${GitHubUsername}/it-ticket-system-monolith/main/deploy/userdata.sh" \
-            -o /tmp/it-ticket-userdata.sh
-          bash /tmp/it-ticket-userdata.sh
+        Fn::Base64: !Sub
+          - |
+            #!/bin/bash
+            set -euo pipefail
+            export DB_HOST="${DbHost}"
+            curl -fsSL "https://raw.githubusercontent.com/${GitHubUsername}/it-ticket-system-monolith/main/deploy/userdata-web.sh" \
+              -o /tmp/it-ticket-userdata-web.sh
+            bash /tmp/it-ticket-userdata-web.sh
+          - DbHost: !GetAtt DatabaseInstance.PrivateIp
       Tags:
         - Key: Name
-          Value: it-ticket-system
+          Value: it-ticket-system-web
 
 Outputs:
-  PublicIP:
-    Description: Public IPv4 address of the instance
-    Value: !GetAtt TicketInstance.PublicIp
+  WebPublicIP:
+    Description: Public IPv4 address of the web instance
+    Value: !GetAtt WebInstance.PublicIp
+  DatabasePrivateIP:
+    Description: Private IPv4 address of the database instance
+    Value: !GetAtt DatabaseInstance.PrivateIp
