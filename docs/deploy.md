@@ -60,9 +60,12 @@ Use an AWS Academy Learner Lab session that is started, with the console open in
 * AMI: **Amazon Linux 2023**.
 * Instance type: `t3.micro`.
 * Key pair: `vockey`, so you can SSH if something fails.
-* Network settings: the same VPC as the web instance. Allow **SSH (port 22)** from anywhere and **MySQL (port 3306)** only from the web instance's security group. Do not open 3306 to `0.0.0.0/0`.
+* Network settings: the same VPC as the web instance. Allow **SSH (port 22)** from anywhere 
+* Then click 'Edit' next to network, scroll down, then click 'Add security group rule'
+* The type is MySQL/aurora, port: 3306, only from the web instance's security group. Do not open 3306 to `0.0.0.0/0`.
 * Storage: keep the default volume.
 * Advanced details, at the bottom: paste the full contents of `deploy/userdata-db.sh` into **User data**.
+* Make sure to get the private IP for the Web Instance's 'User data'
 
 Launch it. On the instance details page, copy the **private** IPv4 address.
 
